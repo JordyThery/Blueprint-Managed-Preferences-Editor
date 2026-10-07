@@ -16,6 +16,12 @@ When Jamf Pro turns a classic configuration profile with an **Application & Cust
 
 Blueprint Managed Preferences Editor is a macOS app that uses that API for you. It finds every blueprint with a Managed Preferences payload, lets you edit the payload in a visual property-list editor, and saves your changes back. Deploying stays a separate, explicit step.
 
+![Blueprint Managed Preferences Editor showing the blueprints that contain Managed Preferences, the preference domain of the selected blueprint, and its keys in the outline editor](docs/screenshot.png)
+
+## Installation
+
+Download the latest notarized build from [Releases](https://github.com/JordyThery/Blueprint-Managed-Preferences-Editor/releases/latest), unzip it, and move the app to `/Applications`.
+
 ## Features
 
 - **Discovery**: lists every blueprint that contains Managed Preferences, with its deployment state, last update and preference domains. You can search by name, description or domain.
