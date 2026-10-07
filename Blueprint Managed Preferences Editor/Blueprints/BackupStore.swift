@@ -1,0 +1,86 @@
+import Foundation
+
+nonisolated struct BlueprintBackup: Identifiable, Hashable, Sendable {
+    let url: URL
+    let blueprintID: String
+    let date: Date
+    let size: Int
+
+    var id: URL { url }
+}
+
+/// Writes the full BlueprintDetail JSON before every PATCH to
+/// `~/Library/Application Support/Blueprint Managed Preferences Editor/Backups/<blueprintId>/<timestamp>.json`.
+nonisolated enum BackupStore {
+    struct BackupError: Error, LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    static var rootURL: URL {
+        URL.applicationSupportDirectory
+            .appending(path: "Blueprint Managed Preferences Editor", directoryHint: .isDirectory)
+            .appending(path: "Backups", directoryHint: .isDirectory)
+    }
+
+    static func directory(for blueprintID: String) -> URL {
+        let safe = blueprintID.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
+        return rootURL.appending(path: safe, directoryHint: .isDirectory)
+    }
+
+    /// File names sort chronologically and contain no colons: `2026-10-07T14-03-11.123Z.json`.
+    private static let fileNameFormat = Date.VerbatimFormatStyle(
+        format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits)T\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased))-\(minute: .twoDigits)-\(second: .twoDigits).\(secondFraction: .fractional(3))Z",
+        timeZone: .gmt,
+        calendar: Calendar(identifier: .gregorian)
+    )
+
+    /// Writes the exact bytes of `detail` as received from the server.
+    @discardableResult
+    static func write(_ detail: BlueprintDetail, date: Date = Date()) throws -> URL {
+        let directory = directory(for: detail.id)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var url = directory.appending(path: "\(date.formatted(fileNameFormat)).json")
+            var counter = 2
+            while FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
+                url = directory.appending(path: "\(date.formatted(fileNameFormat))-\(counter).json")
+                counter += 1
+            }
+            try detail.rawData.write(to: url, options: [.atomic, .withoutOverwriting])
+            return url
+        } catch {
+            throw BackupError(message: "Could not write backup to \(directory.path(percentEncoded: false)): \(error.localizedDescription)")
+        }
+    }
+
+    /// Backups for one blueprint, newest first.
+    static func backups(for blueprintID: String) -> [BlueprintBackup] {
+        let directory = directory(for: blueprintID)
+        let keys: [URLResourceKey] = [.fileSizeKey, .creationDateKey]
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return urls
+            .filter { $0.pathExtension == "json" }
+            .map { url in
+                let values = try? url.resourceValues(forKeys: Set(keys))
+                return BlueprintBackup(
+                    url: url,
+                    blueprintID: blueprintID,
+                    date: values?.creationDate ?? .distantPast,
+                    size: values?.fileSize ?? 0
+                )
+            }
+            .sorted { $0.url.lastPathComponent > $1.url.lastPathComponent }
+    }
+
+    static func load(_ backup: BlueprintBackup) throws -> BlueprintDetail {
+        let data = try Data(contentsOf: backup.url)
+        let detail = try BlueprintDetail(data: data)
+        guard detail.id == backup.blueprintID else {
+            throw BackupError(message: "The backup belongs to blueprint \(detail.id), not \(backup.blueprintID).")
+        }
+        return detail
+    }
+}
