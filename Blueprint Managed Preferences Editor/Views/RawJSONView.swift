@@ -67,6 +67,11 @@ struct RawJSONView: View {
             Divider()
             MonospacedTextView(text: String(decoding: data, as: UTF8.self))
         }
+        .onChange(of: pendingPatchBody) {
+            // Leave the PATCH view when the pending body disappears (e.g. after a save),
+            // so the picker selection always matches an offered format.
+            if pendingPatchBody == nil && format == .patch { format = .pretty }
+        }
     }
 
     private func save(_ data: Data) {
@@ -104,6 +109,13 @@ struct BlueprintHeader: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .help(updated)
+            }
+            if let deployment = detail.overview.deploymentState,
+               let started = deployment.lastDeploymentStarted {
+                Text("Last deployment \(PlatformDate.parse(started)?.formatted(date: .abbreviated, time: .shortened) ?? started)\(deployment.lastDeploymentState.map { " · \(DeploymentStateKind(rawValue: $0).displayName)" } ?? "")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(started)
             }
             Text(detail.id)
                 .font(.caption2.monospaced())

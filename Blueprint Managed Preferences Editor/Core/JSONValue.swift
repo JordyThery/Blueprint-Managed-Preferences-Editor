@@ -20,7 +20,7 @@ nonisolated enum JSONValue: Hashable, Sendable {
 }
 
 /// A JSON number stored as its literal text.
-nonisolated struct JSONNumber: Hashable, Sendable, CustomStringConvertible {
+nonisolated struct JSONNumber: Hashable, Sendable {
     let literal: String
 
     /// Creates a number from literal text that has already been validated by the parser.
@@ -41,7 +41,6 @@ nonisolated struct JSONNumber: Hashable, Sendable, CustomStringConvertible {
     var isInteger: Bool { !literal.contains { $0 == "." || $0 == "e" || $0 == "E" } }
     var intValue: Int? { Int(literal) }
     var doubleValue: Double? { Double(literal) }
-    var description: String { literal }
 }
 
 /// An ordered JSON object.
@@ -110,8 +109,6 @@ nonisolated extension JSONValue {
         if case .object(let value) = self { return value }
         return nil
     }
-
-    var isNull: Bool { self == .null }
 
     /// A short, human-readable type name used in diagnostics and debug views.
     var typeName: String {

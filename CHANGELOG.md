@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.1
+
+This release contains bugfixes and minor improvements.
+
+- Fixed a potential crash when using Undo after switching connections or refreshing: undo history is now cleared whenever an editor is discarded.
+- Blueprints deleted on the server stay listed while they hold unsaved edits, so those edits can still be saved or discarded.
+- "Use This Connection" in Settings now warns before discarding unsaved edits, and deleting a connection asks for confirmation.
+- Blueprint discovery pages through the full list even when the server returns fewer results per page than requested.
+- The review sheet keys its rows per payload, so two payloads with the same display name no longer collide.
+- The Raw JSON view leaves the "Pending PATCH Body" tab automatically once the pending changes are saved.
+- The blueprint header shows the last deployment time and state again.
+- Importing a file that matches the current settings now says so instead of reporting a change.
+- Internal cleanup: removed unused code, anonymized test fixtures, and capped the request log's per-entry body size.
+
 ## 1.0.0
 
 First release.

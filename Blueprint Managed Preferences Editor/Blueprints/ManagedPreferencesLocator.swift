@@ -8,15 +8,9 @@ nonisolated struct ManagedPreferencesPayloadLocation: Hashable, Sendable, Identi
     let payload: JSONObject
     /// `configuration.payloadDisplayName` of the owning component, if found.
     let payloadDisplayName: String?
-    /// The owning component's `identifier`, if found.
-    let componentIdentifier: String?
     /// Top-level keys of the payload's `PayloadContent` object (the preference domains).
     /// Empty if `PayloadContent` is missing or not an object.
     let domains: [String]
-    /// True when the payload sits at
-    /// `steps[i].components[j].configuration.payloadContent[k]` inside a
-    /// `com.jamf.ddm-configuration-profile` component, as the spec describes.
-    let matchesExpectedStructure: Bool
     /// Human-readable notes about anything unexpected in the shape.
     let shapeWarnings: [String]
 
@@ -47,8 +41,6 @@ nonisolated enum ManagedPreferencesLocator {
         var warnings: [String] = []
 
         // Expected: steps[i].components[j].configuration.payloadContent[k]
-        var expected = false
-        var componentIdentifier: String?
         var displayName: String?
         if path.count == 7,
            case .key("steps") = path[0], case .index = path[1],
@@ -56,10 +48,9 @@ nonisolated enum ManagedPreferencesLocator {
            case .key("configuration") = path[4],
            case .key("payloadContent") = path[5], case .index = path[6] {
             let component = blueprint.value(at: Array(path.prefix(4)))
-            componentIdentifier = component?["identifier"]?.stringValue
+            let componentIdentifier = component?["identifier"]?.stringValue
             displayName = component?["configuration"]?["payloadDisplayName"]?.stringValue
-            expected = componentIdentifier == ddmComponentIdentifier
-            if !expected {
+            if componentIdentifier != ddmComponentIdentifier {
                 warnings.append("Owning component identifier is \"\(componentIdentifier ?? "missing")\", expected \"\(ddmComponentIdentifier)\".")
             }
         } else {
@@ -91,9 +82,7 @@ nonisolated enum ManagedPreferencesLocator {
             path: path,
             payload: payload,
             payloadDisplayName: displayName,
-            componentIdentifier: componentIdentifier,
             domains: domains,
-            matchesExpectedStructure: expected,
             shapeWarnings: warnings
         )
     }

@@ -14,8 +14,8 @@ private func rawSteps(of json: String) throws -> String {
     return steps
 }
 
-@Suite("Real blueprint round trip")
-struct RealBlueprintRoundTripTests {
+@Suite("Blueprint fixture round trip")
+struct BlueprintFixtureRoundTripTests {
     @Test(arguments: [selfServiceBlueprintJSON, emailBlueprintJSON, rosettaBlueprintJSON, sampleBlueprintJSON])
     func unchangedDocumentProducesByteIdenticalSteps(json: String) throws {
         let doc = try document(json)
@@ -56,12 +56,12 @@ struct EditingTests {
         let nodeID = try #require(entry.settings.first { $0.key == "DefaultEmailAddressOrDomain" }?.id)
 
         doc.modifySettings(domainID: domain.id, entryID: entry.id) { nodes in
-            nodes.modifyNode(withID: nodeID) { $0.value = .string("rituals.com") }
+            nodes.modifyNode(withID: nodeID) { $0.value = .string("example.com") }
         }
 
         let expected = try rawSteps(of: emailBlueprintJSON).replacingOccurrences(
             of: #""DefaultEmailAddressOrDomain":"$EMAIL""#,
-            with: #""DefaultEmailAddressOrDomain":"rituals.com""#
+            with: #""DefaultEmailAddressOrDomain":"example.com""#
         )
         #expect(doc.updatedSteps?.serializedString() == expected)
         #expect(doc.hasChanges)
@@ -71,7 +71,7 @@ struct EditingTests {
         #expect(changes.first?.domain == "com.microsoft.Outlook")
         #expect(changes.first?.keyPath == "Forced › DefaultEmailAddressOrDomain")
         #expect(changes.first?.oldValue == #""$EMAIL""#)
-        #expect(changes.first?.newValue == #""rituals.com""#)
+        #expect(changes.first?.newValue == #""example.com""#)
     }
 
     @Test func revertingAnEditRestoresOriginalBytes() throws {
@@ -204,7 +204,7 @@ struct PlistValueTests {
         let other = PlistNode(key: "other", value: .boolean(false))
         var nodes = [array, other]
 
-        #expect(nodes.location(of: child.id) == PlistNodeLocation(parentID: array.id, index: 0, parentIsArray: true))
+        #expect(nodes.location(of: child.id) == PlistNodeLocation(parentID: array.id, index: 0))
         nodes.moveNode(withID: other.id, by: -1)
         #expect(nodes.map(\.key) == ["other", "list"])
         nodes.modifyChildren(of: array.id) { children, isArray in

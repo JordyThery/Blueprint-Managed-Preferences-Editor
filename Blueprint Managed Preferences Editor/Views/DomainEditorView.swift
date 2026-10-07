@@ -231,9 +231,11 @@ struct DomainEditorView: View {
         }
     }
 
-    private func replaceSettings(entry: MCXEntry, with nodes: [PlistNode]) {
-        editor.modifySettings("Replace Settings", domainID: domainID, entryID: entry.id) { $0 = nodes }
+    @discardableResult
+    private func replaceSettings(entry: MCXEntry, with nodes: [PlistNode]) -> Bool {
+        let applied = editor.modifySettings("Replace Settings", domainID: domainID, entryID: entry.id) { $0 = nodes }
         selection = []
+        return applied
     }
 
     // MARK: Import / export
@@ -249,9 +251,12 @@ struct DomainEditorView: View {
                 message = "No settings were found in \(url.lastPathComponent)."
                 return
             }
-            replaceSettings(entry: entry, with: match.settings)
-            message = "Replaced \(domain.name) with \(match.settings.count) key(s) from \(url.lastPathComponent)" +
-                (match.name != domain.name && imported.count > 1 ? " (domain \(match.name))" : "") + ". Use Undo to revert."
+            if replaceSettings(entry: entry, with: match.settings) {
+                message = "Replaced \(domain.name) with \(match.settings.count) key(s) from \(url.lastPathComponent)" +
+                    (match.name != domain.name && imported.count > 1 ? " (domain \(match.name))" : "") + ". Use Undo to revert."
+            } else {
+                message = "\(url.lastPathComponent) matches the current settings; nothing changed."
+            }
         } catch {
             message = error.localizedDescription
         }

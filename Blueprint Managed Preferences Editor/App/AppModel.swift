@@ -83,6 +83,7 @@ final class AppModel {
         overviews = []
         details = [:]
         detailErrors = [:]
+        for editor in editors.values { editor.detachUndoHistory() }
         editors = [:]
         readOnlyBlueprintIDs = []
         selectedBlueprintID = nil
@@ -138,11 +139,17 @@ final class AppModel {
         guard !Task.isCancelled else { return }
 
         let listedIDs = Set(list.map(\.id))
-        overviews = list
-        details = details.filter { listedIDs.contains($0.key) }
+        // Blueprints that disappeared from the server stay listed while they hold
+        // unsaved edits, so those edits can still be reviewed, saved or discarded.
+        let retained = editors.filter { listedIDs.contains($0.key) || $0.value.isDirty }
+        for (id, editor) in editors where retained[id] == nil {
+            editor.detachUndoHistory()
+        }
+        editors = retained
+        let keptIDs = retained.keys.filter { !listedIDs.contains($0) }.sorted()
+        overviews = list + keptIDs.compactMap { retained[$0]?.base.overview }
+        details = details.filter { listedIDs.contains($0.key) || retained[$0.key] != nil }
         detailErrors = [:]
-        // Drop editors for blueprints that no longer exist, unless they hold unsaved edits.
-        editors = editors.filter { listedIDs.contains($0.key) || $0.value.isDirty }
         discoveryState = .fetchingDetails(completed: 0, total: list.count)
 
         // Fetch details with a bounded number of requests in flight.

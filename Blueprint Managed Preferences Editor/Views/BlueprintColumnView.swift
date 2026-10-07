@@ -101,18 +101,20 @@ private struct EditorColumn: View {
         .confirmationDialog("Discard all unsaved changes?", isPresented: $isConfirmingDiscard) {
             Button("Discard Changes", role: .destructive) { editor.discardChanges() }
         }
-        .alert(item: $editor.alert) { alert in
+        .alert(
+            editor.alert?.title ?? "",
+            isPresented: Binding(get: { editor.alert != nil }, set: { if !$0 { editor.alert = nil } }),
+            presenting: editor.alert
+        ) { alert in
             switch alert.kind {
             case .conflict:
-                Alert(
-                    title: Text(alert.title),
-                    message: Text(alert.message),
-                    primaryButton: .destructive(Text("Reload and Discard Edits")) { Task { await editor.reload() } },
-                    secondaryButton: .cancel(Text("Keep Editing"))
-                )
+                Button("Reload and Discard Edits", role: .destructive) { Task { await editor.reload() } }
+                Button("Keep Editing", role: .cancel) {}
             case .info, .error:
-                Alert(title: Text(alert.title), message: Text(alert.message))
+                Button("OK") {}
             }
+        } message: { alert in
+            Text(alert.message)
         }
         .alert("Import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
             Button("OK") {}
@@ -259,7 +261,11 @@ private struct EditorColumn: View {
                 return
             }
             let result = editor.importDomains(imported, near: selectedDomainID)
-            importMessage = "Imported from \(url.lastPathComponent): \(result.added) domain(s) added, \(result.replaced) replaced. Use Undo to revert."
+            if result.added == 0 && result.replaced == 0 {
+                importMessage = "\(url.lastPathComponent) matches the current settings; nothing changed."
+            } else {
+                importMessage = "Imported from \(url.lastPathComponent): \(result.added) domain(s) added, \(result.replaced) replaced. Use Undo to revert."
+            }
         } catch {
             importMessage = error.localizedDescription
         }

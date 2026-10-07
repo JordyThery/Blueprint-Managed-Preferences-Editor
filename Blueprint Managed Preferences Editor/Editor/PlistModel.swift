@@ -256,7 +256,6 @@ nonisolated struct PlistNodeLocation: Equatable, Sendable {
     /// nil for the root dictionary.
     let parentID: UUID?
     let index: Int
-    let parentIsArray: Bool
 }
 
 nonisolated extension Array where Element == PlistNode {
@@ -268,13 +267,11 @@ nonisolated extension Array where Element == PlistNode {
         return nil
     }
 
-    func location(of id: UUID, parentID: UUID? = nil, parentIsArray: Bool = false) -> PlistNodeLocation? {
+    func location(of id: UUID, parentID: UUID? = nil) -> PlistNodeLocation? {
         for (index, node) in enumerated() {
-            if node.id == id { return PlistNodeLocation(parentID: parentID, index: index, parentIsArray: parentIsArray) }
-            if let children = node.value.children {
-                let isArray = node.value.type == .array
-                if let found = children.location(of: id, parentID: node.id, parentIsArray: isArray) { return found }
-            }
+            if node.id == id { return PlistNodeLocation(parentID: parentID, index: index) }
+            if let children = node.value.children,
+               let found = children.location(of: id, parentID: node.id) { return found }
         }
         return nil
     }

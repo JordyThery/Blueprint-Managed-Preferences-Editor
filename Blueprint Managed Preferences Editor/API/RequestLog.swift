@@ -38,7 +38,8 @@ final class RequestLog {
 /// Redaction helpers used by the API client before anything reaches the log.
 nonisolated enum LogRedactor {
     static let placeholder = "<redacted>"
-    private static let maxBodyLength = 1_000_000
+    /// Caps the body text retained per log entry, bounding the log's memory use.
+    private static let maxBodyLength = 200_000
     private static let secretHeaders: Set<String> = ["authorization", "cookie", "set-cookie"]
     private static let secretFormFields: Set<String> = ["client_secret"]
     private static let secretJSONKeys: Set<String> = ["access_token", "refresh_token", "id_token", "client_secret"]

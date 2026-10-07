@@ -67,6 +67,11 @@ nonisolated struct PreferenceDomain: Identifiable, Hashable, Sendable {
             content = .unsupported(json, reason: "The domain value is a \(json.typeName), not an object of management modes.")
             return
         }
+        // Duplicate keys would be merged on serialization; keep them verbatim instead.
+        guard Set(object.keys).count == object.count else {
+            content = .unsupported(json, reason: "The domain has duplicate management mode keys.")
+            return
+        }
         var entries: [MCXEntry] = []
         for member in object.members {
             guard let items = member.value.arrayValue else {
@@ -227,7 +232,7 @@ nonisolated struct BlueprintEditDocument: Sendable {
         for payload in payloads where payload.isEditable {
             let oldContent = base.json.value(at: payload.path)?[ManagedPreferencesPayload.contentKey]?.objectValue ?? JSONObject()
             let newContent = payload.serializedItem[ManagedPreferencesPayload.contentKey]?.objectValue ?? JSONObject()
-            result += PreferenceChange.diff(old: oldContent, new: newContent, payloadName: payload.displayName)
+            result += PreferenceChange.diff(old: oldContent, new: newContent, payloadName: payload.displayName, payloadID: payload.id)
         }
         return result
     }
@@ -238,6 +243,9 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
     enum Kind: Hashable, Sendable { case added, removed, changed }
 
     let payloadName: String
+    /// The owning payload's location id, which keys changes uniquely even when
+    /// several payloads share a display name.
+    let payloadID: String
     let domain: String
     /// For example `Forced › KFMSilentOptIn` or `Forced › steps [2] › title`.
     let keyPath: String
@@ -245,9 +253,9 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
     let oldValue: String?
     let newValue: String?
 
-    var id: String { "\(payloadName)|\(domain)|\(keyPath)" }
+    var id: String { "\(payloadID)|\(domain)|\(keyPath)" }
 
-    static func diff(old: JSONObject, new: JSONObject, payloadName: String) -> [PreferenceChange] {
+    static func diff(old: JSONObject, new: JSONObject, payloadName: String, payloadID: String) -> [PreferenceChange] {
         var result: [PreferenceChange] = []
         let domainNames = orderedUnion(old.keys, new.keys)
         for domain in domainNames {
@@ -262,6 +270,7 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
                 let kind: Kind = before == nil ? .added : (after == nil ? .removed : .changed)
                 result.append(PreferenceChange(
                     payloadName: payloadName,
+                    payloadID: payloadID,
                     domain: domain,
                     keyPath: path.isEmpty ? "(domain)" : path,
                     kind: kind,
@@ -286,7 +295,8 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
                     visit(member.value, next)
                 }
             case .array(let array) where !array.isEmpty:
-                // Mode arrays (directly under the domain) hold MCX items: hide index 0.
+                // Mode arrays (directly under the domain) hold MCX items; hide the
+                // index when there is a single item.
                 let isModeArray = components.count == 1
                 for (index, element) in array.enumerated() {
                     if isModeArray && array.count == 1 {

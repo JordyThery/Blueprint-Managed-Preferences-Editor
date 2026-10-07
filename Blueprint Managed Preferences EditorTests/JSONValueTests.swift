@@ -118,7 +118,6 @@ struct ManagedPreferencesLocatorTests {
         let detail = try BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
         #expect(detail.containsManagedPreferences)
         let location = try #require(detail.managedPreferencePayloads.first)
-        #expect(location.matchesExpectedStructure)
         #expect(location.path.pathString == "steps[0].components[1].configuration.payloadContent[0]")
         #expect(location.payloadDisplayName == "MAU")
         #expect(location.domains == ["com.microsoft.autoupdate2", "com.example.other"])
@@ -132,7 +131,6 @@ struct ManagedPreferencesLocatorTests {
         let json = #"{"id":"x","steps":[{"components":[{"identifier":"other","configuration":{"payloadContent":[{"payloadType":"com.apple.ManagedClient.preferences","PayloadContent":["not","an","object"]}]}}]}]}"#
         let detail = try BlueprintDetail(data: Data(json.utf8))
         let location = try #require(detail.managedPreferencePayloads.first)
-        #expect(!location.matchesExpectedStructure)
         #expect(location.domains.isEmpty)
         #expect(location.shapeWarnings.count == 2)
     }

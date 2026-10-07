@@ -30,7 +30,7 @@ final class EditorModel {
         }
     }
 
-    struct Alert: Identifiable {
+    struct Alert {
         enum Kind {
             case info
             case error
@@ -38,7 +38,6 @@ final class EditorModel {
             case conflict
         }
 
-        let id = UUID()
         let kind: Kind
         let title: String
         let message: String
@@ -70,16 +69,27 @@ final class EditorModel {
 
     // MARK: Undoable mutations
 
+    /// Clears this editor's undo registrations. Must be called before the editor is
+    /// discarded: NSUndoManager does not retain or clear closure targets, so stale
+    /// actions would otherwise call into a deallocated editor.
+    func detachUndoHistory() {
+        undoManager?.removeAllActions(withTarget: self)
+        undoManager = nil
+    }
+
     /// Applies a change to the payloads as one undoable action.
-    private func perform(_ actionName: String, _ change: (inout BlueprintEditDocument) -> Void) {
-        guard canEdit else { return }
+    /// Returns false when nothing changed and no action was registered.
+    @discardableResult
+    private func perform(_ actionName: String, _ change: (inout BlueprintEditDocument) -> Void) -> Bool {
+        guard canEdit else { return false }
         var updated = document
         change(&updated)
-        guard updated.payloads != document.payloads else { return }
+        guard updated.payloads != document.payloads else { return false }
         let previous = document.payloads
         document.payloads = updated.payloads
         registerUndo(restoring: previous, actionName: actionName)
         recomputeDirty()
+        return true
     }
 
     private func registerUndo(restoring payloads: [ManagedPreferencesPayload], actionName: String) {
@@ -144,10 +154,10 @@ final class EditorModel {
         return entries.first
     }
 
-    func validateDomainName(_ name: String, inPayloadOf domainID: PreferenceDomain.ID?, payloadIndex: Int? = nil) -> String? {
+    func validateDomainName(_ name: String, inPayloadOf domainID: PreferenceDomain.ID?) -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "The domain name can't be empty." }
-        guard let index = payloadIndex ?? domainID.flatMap(document.payloadIndex(containing:)) else { return nil }
+        guard let index = domainID.flatMap(document.payloadIndex(containing:)) else { return nil }
         let clash = document.payloads[index].domains.contains { $0.name == trimmed && $0.id != domainID }
         return clash ? "A domain named “\(trimmed)” already exists in this payload." : nil
     }
@@ -201,7 +211,7 @@ final class EditorModel {
                 ?? document.payloads.firstIndex(where: \.isEditable) else { return (0, 0) }
         var added = 0
         var replaced = 0
-        perform("Import") { document in
+        let applied = perform("Import") { document in
             for domain in imported {
                 if let index = document.payloads[payloadIndex].domains.firstIndex(where: { $0.name == domain.name }),
                    case .entries(var entries) = document.payloads[payloadIndex].domains[index].content {
@@ -217,12 +227,14 @@ final class EditorModel {
                 }
             }
         }
-        return (added, replaced)
+        return applied ? (added, replaced) : (0, 0)
     }
 
     // MARK: Key/value tree
 
-    func modifySettings(_ actionName: String, domainID: PreferenceDomain.ID, entryID: MCXEntry.ID, _ body: (inout [PlistNode]) -> Void) {
+    /// Returns false when nothing changed and no undo action was registered.
+    @discardableResult
+    func modifySettings(_ actionName: String, domainID: PreferenceDomain.ID, entryID: MCXEntry.ID, _ body: (inout [PlistNode]) -> Void) -> Bool {
         perform(actionName) { document in
             document.modifySettings(domainID: domainID, entryID: entryID, body)
         }
@@ -236,6 +248,8 @@ final class EditorModel {
         guard isDirty, !isReadOnly, !isBusy else { return }
         let snapshot = document
         operation = .saving
+        // Tracks which step failed, so errors are reported under the right title.
+        var action = "Save"
         defer { operation = .idle }
         do {
             let service = try app.currentService()
@@ -261,6 +275,7 @@ final class EditorModel {
 
             if deploy {
                 operation = .deploying
+                action = "Deploy"
                 try await service.deploy(id: blueprintID)
                 guard await reloadAfterWrite(service: service) else { return }
                 alert = Alert(kind: .info, title: "Saved and Deployment Started", message: "“\(base.overview.name)” was saved and its deployment has started.")
@@ -268,7 +283,7 @@ final class EditorModel {
                 alert = Alert(kind: .info, title: "Saved", message: "“\(base.overview.name)” was saved. It shows as Out of Date until you deploy it.")
             }
         } catch {
-            handle(error, action: deploy && !isDirty ? "Deploy" : "Save")
+            handle(error, action: action)
         }
     }
 

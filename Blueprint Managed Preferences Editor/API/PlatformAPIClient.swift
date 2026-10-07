@@ -54,6 +54,7 @@ actor PlatformAPIClient {
 
     /// Sends a request to `{region}.api.jamfcloud.com{path}` and returns the response
     /// for any 2xx status. Non-2xx statuses are thrown as `APIError.http`.
+    /// `path` must already be valid percent-encoded path text; it is not encoded again.
     func send(
         method: String,
         path: String,
@@ -65,7 +66,7 @@ actor PlatformAPIClient {
         guard var components = URLComponents(url: credentials.region.baseURL, resolvingAgainstBaseURL: false) else {
             throw APIError.invalidResponse("Invalid base URL")
         }
-        components.path = path
+        components.percentEncodedPath = path
         components.queryItems = query.isEmpty ? nil : query
         guard let url = components.url else { throw APIError.invalidResponse("Invalid URL for path \(path)") }
 

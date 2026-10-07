@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// A read-only, selectable, monospaced text view backed by NSTextView. Handles
-/// multi-megabyte JSON far better than a SwiftUI `Text`.
+/// multi-megabyte JSON more efficiently than a SwiftUI `Text`.
 struct MonospacedTextView: NSViewRepresentable {
     let text: String
 

@@ -47,7 +47,6 @@ nonisolated struct BlueprintOverview: Identifiable, Hashable, Sendable {
     var description: String?
     /// Kept as the exact server string so optimistic-concurrency checks compare
     /// like with like.
-    var created: String?
     var updated: String?
     var deploymentState: DeploymentState?
 
@@ -56,13 +55,11 @@ nonisolated struct BlueprintOverview: Identifiable, Hashable, Sendable {
         self.id = id
         name = json["name"]?.stringValue ?? "(unnamed)"
         description = json["description"]?.stringValue
-        created = json["created"]?.stringValue
         updated = json["updated"]?.stringValue
         deploymentState = DeploymentState(json: json["deploymentState"])
     }
 
     var updatedDate: Date? { updated.flatMap(PlatformDate.parse) }
-    var createdDate: Date? { created.flatMap(PlatformDate.parse) }
 }
 
 /// A full blueprint as returned by GET /v1/blueprints/{id}.

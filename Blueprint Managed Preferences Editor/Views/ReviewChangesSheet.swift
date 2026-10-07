@@ -6,12 +6,30 @@ struct ReviewChangesSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isConfirmingDeploy = false
 
+    /// Changes of one payload and domain, keyed by the payload's location so two
+    /// payloads with the same display name stay separate.
+    private struct ChangeGroup: Identifiable {
+        let id: String
+        let title: String
+        var changes: [PreferenceChange]
+    }
+
+    private static func groups(from changes: [PreferenceChange]) -> [ChangeGroup] {
+        var groups: [ChangeGroup] = []
+        for change in changes {
+            let id = "\(change.payloadID)|\(change.domain)"
+            if let index = groups.firstIndex(where: { $0.id == id }) {
+                groups[index].changes.append(change)
+            } else {
+                groups.append(ChangeGroup(id: id, title: "\(change.payloadName) — \(change.domain)", changes: [change]))
+            }
+        }
+        return groups
+    }
+
     var body: some View {
         let changes = editor.document.changes
-        let grouped = Dictionary(grouping: changes) { "\($0.payloadName) — \($0.domain)" }
-        let groupOrder = changes.map { "\($0.payloadName) — \($0.domain)" }.reduce(into: [String]()) { result, key in
-            if !result.contains(key) { result.append(key) }
-        }
+        let groups = Self.groups(from: changes)
 
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -28,9 +46,9 @@ struct ReviewChangesSheet: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(groupOrder, id: \.self) { group in
-                        Section(group) {
-                            ForEach(grouped[group] ?? []) { change in
+                    ForEach(groups) { group in
+                        Section(group.title) {
+                            ForEach(group.changes) { change in
                                 ChangeRow(change: change)
                             }
                         }

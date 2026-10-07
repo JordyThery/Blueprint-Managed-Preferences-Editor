@@ -45,13 +45,6 @@ nonisolated enum APIError: Error, LocalizedError, Sendable {
     case authentication(status: Int, body: String?)
     case http(status: Int, details: PlatformErrorDetails?, body: String?)
 
-    var statusCode: Int? {
-        switch self {
-        case .authentication(let status, _), .http(let status, _, _): status
-        default: nil
-        }
-    }
-
     var details: PlatformErrorDetails? {
         if case .http(_, let details, _) = self { return details }
         return nil

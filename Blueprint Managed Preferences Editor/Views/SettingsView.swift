@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var editingID: UUID?
+    @State private var pendingDeletionID: UUID?
 
     var body: some View {
         let store = model.profileStore
@@ -37,8 +38,7 @@ struct SettingsView: View {
                     }
                     .help("Add connection")
                     Button {
-                        if let editingID { store.delete(id: editingID) }
-                        editingID = store.profiles.first?.id
+                        pendingDeletionID = editingID
                     } label: {
                         Image(systemName: "minus").frame(width: 24, height: 20)
                     }
@@ -69,6 +69,20 @@ struct SettingsView: View {
         .onAppear {
             editingID = editingID ?? store.selectedProfileID ?? store.profiles.first?.id
         }
+        .confirmationDialog(
+            "Delete “\(pendingDeletionID.flatMap { store.profile(id: $0)?.name } ?? "connection")”?",
+            isPresented: Binding(get: { pendingDeletionID != nil }, set: { if !$0 { pendingDeletionID = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let id = pendingDeletionID { store.delete(id: id) }
+                pendingDeletionID = nil
+                editingID = store.profiles.first?.id
+            }
+            Button("Cancel", role: .cancel) { pendingDeletionID = nil }
+        } message: {
+            Text("The connection and its Keychain secret are removed.")
+        }
     }
 }
 
@@ -80,6 +94,7 @@ private struct ProfileEditor: View {
     @State private var storedSecret: String
     @State private var testState: TestState = .idle
     @State private var saveError: String?
+    @State private var isConfirmingSwitch = false
 
     enum TestState: Equatable {
         case idle
@@ -130,8 +145,12 @@ private struct ProfileEditor: View {
                 HStack {
                     if !isActive {
                         Button("Use This Connection") {
-                            save()
-                            model.profileStore.selectedProfileID = draft.id
+                            // Switching discards state loaded from the current tenant.
+                            if model.hasUnsavedChanges {
+                                isConfirmingSwitch = true
+                            } else {
+                                activate()
+                            }
                         }
                     } else {
                         Label("Active connection", systemImage: "checkmark.circle.fill")
@@ -154,6 +173,15 @@ private struct ProfileEditor: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Switch connection and discard unsaved changes?", isPresented: $isConfirmingSwitch) {
+            Button("Discard and Switch", role: .destructive, action: activate)
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func activate() {
+        save()
+        model.profileStore.selectedProfileID = draft.id
     }
 
     @ViewBuilder

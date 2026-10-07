@@ -49,17 +49,23 @@ nonisolated struct BlueprintService: Sendable {
         )
     }
 
-    /// Pages through every blueprint.
+    /// Pages through every blueprint. Completion is judged against `totalCount`,
+    /// so a server that returns fewer items per page than requested is still
+    /// paged through fully.
     func listAll(search: String? = nil, pageSize: Int = 100) async throws -> [BlueprintOverview] {
         var all: [BlueprintOverview] = []
+        var received = 0
         var page = 0
         while true {
             try Task.checkCancellation()
             let result = try await listPage(page: page, pageSize: pageSize, search: search)
             all.append(contentsOf: result.results)
-            let received = result.results.count + result.unparseableCount
-            let reachedTotal = result.totalCount.map { (page + 1) * pageSize >= $0 } ?? false
-            if received < pageSize || reachedTotal || received == 0 { break }
+            let pageCount = result.results.count + result.unparseableCount
+            received += pageCount
+            if pageCount == 0 { break }
+            if let total = result.totalCount, received >= total { break }
+            // Without a total, a short page is the only end-of-list signal.
+            if result.totalCount == nil && pageCount < pageSize { break }
             page += 1
             // Hard stop in case the server ignores paging.
             if page >= 1000 { break }
@@ -105,6 +111,8 @@ nonisolated struct BlueprintService: Sendable {
         )
     }
 
+    /// Percent-encodes an id for use in a URL path. The client assigns paths via
+    /// `percentEncodedPath`, so this is the only encoding step.
     private static func escape(_ id: String) -> String {
         id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id
     }
