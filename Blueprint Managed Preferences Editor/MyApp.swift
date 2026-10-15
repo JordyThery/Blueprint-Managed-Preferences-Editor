@@ -7,6 +7,8 @@ import SwiftUI
         Window("Blueprint Managed Preferences Editor", id: "main") {
             ContentView()
                 .environment(model)
+                .environment(model.updates)
+                .task { await model.updates.checkAutomatically() }
         }
         .commands {
             AppCommands(model: model)
@@ -21,6 +23,7 @@ import SwiftUI
         Settings {
             SettingsView()
                 .environment(model)
+                .environment(model.updates)
         }
     }
 }
@@ -34,6 +37,9 @@ private struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { model.updates.checkManually() }
+        }
         CommandGroup(after: .toolbar) {
             Button("Refresh Blueprints") { model.refresh() }
                 .keyboardShortcut("r", modifiers: .command)

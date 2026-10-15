@@ -21,6 +21,7 @@ final class AppModel {
 
     let profileStore = ProfileStore()
     let requestLog = RequestLog()
+    let updates = UpdateChecker()
 
     private(set) var overviews: [BlueprintOverview] = []
     private(set) var details: [String: BlueprintDetail] = [:]

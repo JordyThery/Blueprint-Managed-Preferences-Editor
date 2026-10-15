@@ -4,10 +4,12 @@ import SwiftUI
 /// Blueprints → preference domains → key/value editor.
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(UpdateChecker.self) private var updates
     @Environment(\.openWindow) private var openWindow
     @State private var isShowingFetchByID = false
 
     var body: some View {
+        @Bindable var updates = updates
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 240, ideal: 300)
@@ -56,6 +58,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingFetchByID) {
             FetchByIDSheet()
+        }
+        .sheet(isPresented: $updates.isPresented) {
+            UpdateView()
         }
         .onChange(of: model.profileStore.selectedProfileID) {
             model.connectionDidChange()
@@ -212,6 +217,8 @@ private struct FetchByIDSheet: View {
 }
 
 #Preview {
+    let model = AppModel()
     ContentView()
-        .environment(AppModel())
+        .environment(model)
+        .environment(model.updates)
 }

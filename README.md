@@ -20,7 +20,7 @@ Blueprint Managed Preferences Editor is a macOS app that uses that API for you. 
 
 ## Installation
 
-Download the latest notarized build from [Releases](https://github.com/JordyThery/Blueprint-Managed-Preferences-Editor/releases/latest), unzip it, and move the app to `/Applications`.
+Download the latest notarized build from [Releases](https://github.com/JordyThery/Blueprint-Managed-Preferences-Editor/releases/latest), unzip it, and move the app to `/Applications`. The app checks for new releases once a day and offers the download; use **Check for Updates…** in the app menu to check right away.
 
 ## Features
 
@@ -59,7 +59,7 @@ The Blueprints API applies updates as a JSON merge-patch, and a merge-patch repl
 ## Security
 
 - **Credentials** stay on your Mac. Client secrets are stored in the keychain; the other connection settings are stored in user defaults.
-- **Network**: the app talks only to `{region}.api.jamfcloud.com`.
+- **Network**: the app talks only to `{region}.api.jamfcloud.com`, plus one daily request to GitHub asking whether a newer release exists. That request sends nothing else and can be turned off in Settings.
 - **Request log**: kept in memory only, with tokens and secrets redacted.
 - **Backups** contain the blueprint's JSON and no credentials. They are stored unencrypted in your user Library.
 - **No sandbox**: the app is not sandboxed, so backups are written to the exact path above. It runs with the Hardened Runtime.

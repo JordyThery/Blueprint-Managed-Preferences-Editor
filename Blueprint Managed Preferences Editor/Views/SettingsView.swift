@@ -1,7 +1,44 @@
 import SwiftUI
 
-/// Manage saved connections. Secrets are written to the Keychain only.
+/// The Settings window: connections and update preferences.
 struct SettingsView: View {
+    var body: some View {
+        TabView {
+            Tab("Connections", systemImage: "network") {
+                ConnectionsSettingsView()
+            }
+            Tab("Updates", systemImage: "arrow.down.circle") {
+                UpdatesSettingsView()
+            }
+        }
+    }
+}
+
+/// Whether and how the app checks GitHub for new releases.
+private struct UpdatesSettingsView: View {
+    @Environment(UpdateChecker.self) private var updates
+    @AppStorage(UpdateChecker.automaticCheckKey) private var checksForUpdates = true
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Check for updates daily", isOn: $checksForUpdates)
+                    .help("Ask GitHub once a day whether a newer release exists")
+                LabeledContent("Installed version", value: updates.currentVersion)
+                Button("Check for Updates Now…") { updates.checkManually() }
+            } footer: {
+                Text("The check asks api.github.com for the latest release and sends nothing else. Updates are downloaded, never installed automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 680, height: 220)
+    }
+}
+
+/// Manage saved connections. Secrets are written to the Keychain only.
+private struct ConnectionsSettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var editingID: UUID?
     @State private var pendingDeletionID: UUID?
