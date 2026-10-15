@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2
 
 - Update checker: once a day the app asks GitHub whether a newer release exists and offers the release notes and download. Check manually with **Check for Updates…** in the app menu; turn the daily check off in Settings → Updates.
 
