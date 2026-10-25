@@ -66,6 +66,7 @@ struct ContentView: View {
         .onChange(of: model.profileStore.selectedProfileID) {
             model.connectionDidChange()
         }
+        .confirmsConnectionSwitch(from: .mainWindow)
         .background(WindowEditedMarker(isEdited: model.hasUnsavedChanges))
         .frame(minWidth: 1100, minHeight: 600)
     }
@@ -120,44 +121,57 @@ private struct WindowEditedMarker: NSViewRepresentable {
     }
 }
 
-/// Toolbar menu for switching between saved connections. Asks first when there
-/// are unsaved edits, since switching discards them.
+/// Toolbar menu for switching between saved connections, with Edit Connections…
+/// (JTKit's `ConnectionPicker`, the same items as the Connection menu). Asks
+/// first when there are unsaved edits, since switching discards them.
 private struct ProfilePicker: View {
     @Environment(AppModel.self) private var model
-    @State private var pendingProfileID: UUID?
 
     var body: some View {
-        let store = model.profileStore
-        if store.profiles.isEmpty {
-            SettingsLink { Label("Add Connection…", systemImage: "plus") }
-        } else {
-            Picker("Connection", selection: Binding(
-                get: { store.selectedProfileID },
-                set: { newValue in
-                    guard newValue != store.selectedProfileID else { return }
-                    if model.hasUnsavedChanges {
-                        pendingProfileID = newValue
-                    } else {
-                        store.selectedProfileID = newValue
-                    }
-                }
-            )) {
-                ForEach(store.profiles) { profile in
-                    Text("\(profile.name) (\(profile.region.rawValue))").tag(Optional(profile.id))
-                }
-            }
-            .pickerStyle(.menu)
-            .help("Active connection")
-            .confirmationDialog(
-                "Switch connection and discard unsaved changes?",
-                isPresented: Binding(get: { pendingProfileID != nil }, set: { if !$0 { pendingProfileID = nil } })
-            ) {
-                Button("Discard and Switch", role: .destructive) {
-                    store.selectedProfileID = pendingProfileID
-                    pendingProfileID = nil
-                }
-                Button("Cancel", role: .cancel) { pendingProfileID = nil }
-            }
+        ConnectionPicker(
+            store: model.profileStore.connections,
+            selection: model.connectionSelection(from: .mainWindow),
+            itemTitle: \.menuTitle
+        )
+    }
+}
+
+extension AppModel {
+    /// The active connection for JTKit's picker, menu and Connections tab.
+    /// Choosing another one while blueprint edits are unsaved asks first.
+    /// - Parameter whenAsking: runs when the question is shown, e.g. to
+    ///   bring the main window forward for the Connection menu.
+    func connectionSelection(from origin: ConnectionSwitchOrigin,
+                             whenAsking: @escaping () -> Void = {}) -> Binding<UUID?> {
+        Binding(
+            get: { self.profileStore.selectedProfileID },
+            set: { if self.chooseConnection($0, from: origin) { whenAsking() } }
+        )
+    }
+}
+
+extension View {
+    /// "Switch connection and discard unsaved changes?" for a connection
+    /// chosen from `origin` while blueprint edits are unsaved.
+    func confirmsConnectionSwitch(from origin: AppModel.ConnectionSwitchOrigin) -> some View {
+        modifier(ConnectionSwitchConfirmation(origin: origin))
+    }
+}
+
+private struct ConnectionSwitchConfirmation: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let origin: AppModel.ConnectionSwitchOrigin
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            "Switch connection and discard unsaved changes?",
+            isPresented: Binding(
+                get: { model.pendingConnectionSwitch?.origin == origin },
+                set: { if !$0 { model.pendingConnectionSwitch = nil } }
+            )
+        ) {
+            Button("Discard and Switch", role: .destructive) { model.confirmConnectionSwitch() }
+            Button("Cancel", role: .cancel) { model.pendingConnectionSwitch = nil }
         }
     }
 }

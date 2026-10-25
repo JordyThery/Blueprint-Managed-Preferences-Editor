@@ -61,6 +61,45 @@ final class AppModel {
 
     // MARK: Connection
 
+    /// Where another connection was chosen: the main window (toolbar picker,
+    /// Connection menu) or Settings › Connections. The question about unsaved
+    /// changes appears there.
+    enum ConnectionSwitchOrigin {
+        case mainWindow
+        case settings
+    }
+
+    /// A connection chosen while blueprint edits were unsaved, waiting for
+    /// "Discard and Switch".
+    struct PendingConnectionSwitch: Equatable {
+        let profileID: UUID
+        let origin: ConnectionSwitchOrigin
+    }
+
+    var pendingConnectionSwitch: PendingConnectionSwitch?
+
+    /// Makes `profileID` the active connection or, when blueprint edits are
+    /// unsaved, keeps it waiting for "Discard and Switch", since switching
+    /// discards them. Returns true when it asks first. Clearing the choice
+    /// (after the active connection was deleted) never asks.
+    @discardableResult
+    func chooseConnection(_ profileID: UUID?, from origin: ConnectionSwitchOrigin) -> Bool {
+        guard profileID != profileStore.selectedProfileID else { return false }
+        if let profileID, hasUnsavedChanges {
+            pendingConnectionSwitch = PendingConnectionSwitch(profileID: profileID, origin: origin)
+            return true
+        }
+        profileStore.selectedProfileID = profileID
+        return false
+    }
+
+    /// "Discard and Switch": makes the waiting connection the active one.
+    func confirmConnectionSwitch() {
+        guard let pending = pendingConnectionSwitch else { return }
+        pendingConnectionSwitch = nil
+        profileStore.selectedProfileID = pending.profileID
+    }
+
     /// Returns a client for the selected profile, rebuilding it when credentials change.
     func currentService() throws -> BlueprintService {
         guard let profile = profileStore.selectedProfile,

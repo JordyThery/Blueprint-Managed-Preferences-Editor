@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Jamf Platform API region.
 nonisolated enum PlatformRegion: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -24,6 +25,9 @@ nonisolated enum PlatformRegion: String, Codable, CaseIterable, Identifiable, Se
 
 /// A saved tenant connection. The client secret is NOT stored here: it lives in the
 /// Keychain, keyed by `id`.
+///
+/// Saved under the UserDefaults key `connectionProfiles` with these field names;
+/// keep them, or saved connections are lost.
 nonisolated struct ConnectionProfile: Codable, Identifiable, Hashable, Sendable {
     var id = UUID()
     var name: String
@@ -33,6 +37,11 @@ nonisolated struct ConnectionProfile: Codable, Identifiable, Hashable, Sendable 
 
     static func newProfile() -> ConnectionProfile {
         ConnectionProfile(name: "New Connection", region: .us, environmentID: "", clientID: "")
+    }
+
+    /// The name in the toolbar picker and the Connection menu, e.g. "Production (eu)".
+    var menuTitle: String {
+        "\(ConnectionMenuText.name(of: connection)) (\(region.rawValue))"
     }
 
     var isComplete: Bool {
@@ -47,4 +56,22 @@ nonisolated struct PlatformCredentials: Sendable, Equatable {
     var environmentID: String
     var clientID: String
     var clientSecret: String
+}
+
+/// How JTKit's connections list and editor see a profile: a Jamf Platform API
+/// connection. Only the name, region, Environment ID and client ID change.
+nonisolated extension ConnectionProfile: ConnectionRecord {
+    var connection: Connection {
+        get {
+            Connection(id: id, name: name, service: .jamfPlatform,
+                       region: JamfRegion(rawValue: region.rawValue) ?? .us,
+                       environmentID: environmentID, clientID: clientID)
+        }
+        set {
+            name = newValue.name
+            region = PlatformRegion(rawValue: newValue.region.rawValue) ?? region
+            environmentID = newValue.environmentID
+            clientID = newValue.clientID
+        }
+    }
 }

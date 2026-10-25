@@ -1,74 +1,101 @@
 import Foundation
+import JTKit
 import Observation
+import os
 
-/// Persists connection profiles (without secrets) in UserDefaults and tracks the
-/// active one. Secrets are read from and written to the Keychain on demand.
+/// The saved connection profiles and the active one. JTKit's `ConnectionStore`
+/// keeps the profiles (without secrets) where they have always been, under the
+/// UserDefaults key `connectionProfiles`, and their client secrets in the login
+/// Keychain (service `Blueprint Managed Preferences Editor.client-secret`,
+/// account = profile UUID). The active profile is saved under
+/// `selectedConnectionProfileID`.
 @Observable
 final class ProfileStore {
-    private static let profilesKey = "connectionProfiles"
-    private static let selectedKey = "selectedConnectionProfileID"
+    static let profilesKey = "connectionProfiles"
+    static let selectedKey = "selectedConnectionProfileID"
 
-    private(set) var profiles: [ConnectionProfile]
+    let connections: ConnectionStore<ConnectionProfile>
+    @ObservationIgnored private let defaults: UserDefaults
+
     var selectedProfileID: UUID? {
-        didSet { UserDefaults.standard.set(selectedProfileID?.uuidString, forKey: Self.selectedKey) }
+        didSet { defaults.set(selectedProfileID?.uuidString, forKey: Self.selectedKey) }
     }
 
-    init() {
-        if let data = UserDefaults.standard.data(forKey: Self.profilesKey),
-           let decoded = try? JSONDecoder().decode([ConnectionProfile].self, from: data) {
-            profiles = decoded
+    /// - Parameters:
+    ///   - defaults: where the profiles and the active one are saved.
+    ///   - secrets: where client secrets are kept; the app's Keychain items by default.
+    init(defaults: UserDefaults = .standard, secrets: any SecretStore = ProfileStore.keychain) {
+        self.defaults = defaults
+        let logger = Self.logger
+        connections = ConnectionStore(
+            storage: UserDefaultsConnectionStorage(key: Self.profilesKey, defaults: defaults),
+            secrets: [.main: SecretLocation(store: secrets)],
+            log: { logger.error("\($0, privacy: .public)") }
+        )
+        let storedSelection = defaults.string(forKey: Self.selectedKey).flatMap(UUID.init)
+        // A stored selection that no longer matches a profile would read as "no connection".
+        if let storedSelection, connections.record(id: storedSelection) != nil {
+            selectedProfileID = storedSelection
         } else {
-            profiles = []
+            selectedProfileID = connections.records.first?.id
         }
-        let storedSelection = UserDefaults.standard.string(forKey: Self.selectedKey).flatMap(UUID.init)
-        selectedProfileID = storedSelection ?? profiles.first?.id
     }
+
+    /// The client secrets, as earlier versions of the app saved them.
+    nonisolated static let keychain = KeychainSecretStore(
+        service: "Blueprint Managed Preferences Editor.client-secret",
+        label: "Blueprint Managed Preferences Editor client secret",
+        log: { logger.error("\($0, privacy: .public)") }
+    )
+
+    private nonisolated static let logger = Logger(subsystem: "be.jordythery.blueprint-managed-preferences-editor", category: "connections")
+
+    var profiles: [ConnectionProfile] { connections.records }
 
     var selectedProfile: ConnectionProfile? {
-        profiles.first { $0.id == selectedProfileID }
+        selectedProfileID.flatMap(connections.record(id:))
     }
 
     func profile(id: UUID) -> ConnectionProfile? {
-        profiles.first { $0.id == id }
+        connections.record(id: id)
     }
 
-    /// Inserts or updates a profile. Pass a secret to update the Keychain item;
-    /// pass nil to leave the stored secret unchanged.
-    func save(_ profile: ConnectionProfile, secret: String?) throws {
-        if let secret {
-            try KeychainStore.setSecret(secret, for: profile.id)
-        }
-        if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
-            profiles[index] = profile
-        } else {
-            profiles.append(profile)
-        }
-        if selectedProfileID == nil { selectedProfileID = profile.id }
-        persist()
+    /// A new profile for + in Settings › Connections. The first one becomes active.
+    func newProfile() -> ConnectionProfile {
+        let profile = ConnectionProfile.newProfile()
+        if selectedProfile == nil { selectedProfileID = profile.id }
+        return profile
     }
 
-    func delete(id: UUID) {
-        KeychainStore.deleteSecret(for: id)
-        profiles.removeAll { $0.id == id }
-        if selectedProfileID == id { selectedProfileID = profiles.first?.id }
-        persist()
+    /// After a profile was deleted in Settings: when it was the active one, the
+    /// first remaining profile becomes active.
+    func profileWasDeleted() {
+        if selectedProfile == nil { selectedProfileID = profiles.first?.id }
     }
 
+    /// The stored client secret, or nil when there is none or the Keychain
+    /// can't be read (the error code goes to the log).
+    func secret(for profile: ConnectionProfile) -> String? {
+        connections.secret(for: profile.connection)
+    }
+
+    /// Nil when the profile is incomplete or has no stored secret.
     func credentials(for profile: ConnectionProfile) -> PlatformCredentials? {
-        guard profile.isComplete, let secret = KeychainStore.secret(for: profile.id), !secret.isEmpty else {
+        guard profile.isComplete, let secret = secret(for: profile), !secret.isEmpty else {
             return nil
         }
-        return PlatformCredentials(
-            region: profile.region,
-            environmentID: profile.environmentID.trimmingCharacters(in: .whitespaces),
-            clientID: profile.clientID.trimmingCharacters(in: .whitespaces),
-            clientSecret: secret
-        )
+        return PlatformCredentials(profile: profile, secret: secret)
     }
+}
 
-    private func persist() {
-        if let data = try? JSONEncoder().encode(profiles) {
-            UserDefaults.standard.set(data, forKey: Self.profilesKey)
-        }
+nonisolated extension PlatformCredentials {
+    /// The profile's values and a secret, with surrounding spaces removed.
+    init(profile: ConnectionProfile, secret: String) {
+        self.init(
+            region: profile.region,
+            environmentID: profile.environmentID.trimmingCharacters(in: .whitespacesAndNewlines),
+            clientID: profile.clientID.trimmingCharacters(in: .whitespacesAndNewlines),
+            clientSecret: secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 }
