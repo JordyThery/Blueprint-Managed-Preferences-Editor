@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Observation
 
 /// App-wide state: the active connection, discovered blueprints, their editors
@@ -21,7 +22,11 @@ final class AppModel {
 
     let profileStore = ProfileStore()
     let requestLog = RequestLog()
-    let updates = UpdateChecker()
+    let updates = UpdateChecker(configuration: UpdateConfiguration(
+        owner: "JordyThery",
+        repository: "Blueprint-Managed-Preferences-Editor",
+        appName: "Blueprint Managed Preferences Editor"
+    ))
 
     private(set) var overviews: [BlueprintOverview] = []
     private(set) var details: [String: BlueprintDetail] = [:]

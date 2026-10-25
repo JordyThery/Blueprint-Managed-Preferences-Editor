@@ -72,7 +72,7 @@ The Blueprints API applies updates as a JSON merge-patch, and a merge-patch repl
 
 ## Building
 
-Open `Blueprint Managed Preferences Editor.xcodeproj` in Xcode 27 or later and build the `Blueprint Managed Preferences Editor` scheme (⌘R). Run the tests with ⌘U. The app has no dependencies and uses only Apple frameworks.
+Open `Blueprint Managed Preferences Editor.xcodeproj` in Xcode 27 or later and build the `Blueprint Managed Preferences Editor` scheme (⌘R). Run the tests with ⌘U. Depends on [JTKit](https://github.com/JordyThery/JTKit), Jordy's own shared package; no third-party dependencies.
 
 ## Support
 
