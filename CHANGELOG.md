@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- About now comes from JTKit, shared with Jordy's other apps: a window with the version, a short description and a link to the GitHub repository, replacing the standard About panel. It opens only from the app menu and is not listed in the Window menu.
+- **Settings › Updates** now holds only the "Check for updates daily" switch; your choice is kept. **Check for Updates…** stays in the app menu, and brings the main window back if it was closed.
+
 ## 1.0.2
 
 - Update checker: once a day the app asks GitHub whether a newer release exists and offers the release notes and download. Check manually with **Check for Updates…** in the app menu; turn the daily check off in Settings → Updates.

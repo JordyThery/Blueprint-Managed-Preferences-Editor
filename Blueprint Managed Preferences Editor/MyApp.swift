@@ -5,7 +5,7 @@ import SwiftUI
     @State private var model = AppModel()
 
     var body: some Scene {
-        Window("Blueprint Managed Preferences Editor", id: "main") {
+        Window("Blueprint Managed Preferences Editor", id: WindowID.main) {
             ContentView()
                 .environment(model)
                 .environment(model.updates)
@@ -14,6 +14,8 @@ import SwiftUI
         .commands {
             AppCommands(model: model)
         }
+
+        AboutWindow(configuration: .blueprintManagedPreferencesEditor)
 
         Window("Request Log", id: WindowID.requestLog) {
             RequestLogView()
@@ -30,6 +32,7 @@ import SwiftUI
 }
 
 enum WindowID {
+    static let main = "main"
     static let requestLog = "request-log"
 }
 
@@ -38,8 +41,10 @@ private struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
-        CommandGroup(after: .appInfo) {
-            Button("Check for Updates…") { model.updates.checkManually() }
+        AppInfoCommands(appName: "Blueprint Managed Preferences Editor") {
+            // The update sheet is presented on the main window.
+            openWindow(id: WindowID.main)
+            model.updates.checkManually()
         }
         CommandGroup(after: .toolbar) {
             Button("Refresh Blueprints") { model.refresh() }

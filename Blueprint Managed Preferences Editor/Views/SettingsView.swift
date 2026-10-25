@@ -1,7 +1,7 @@
 import JTKit
 import SwiftUI
 
-/// The Settings window: connections and update preferences.
+/// The Settings window: saved Jamf Platform API connections and the daily update check.
 struct SettingsView: View {
     var body: some View {
         TabView {
@@ -9,32 +9,13 @@ struct SettingsView: View {
                 ConnectionsSettingsView()
             }
             Tab("Updates", systemImage: "arrow.down.circle") {
-                UpdatesSettingsView()
+                Form {
+                    UpdateSettingsSection()
+                }
+                .formStyle(.grouped)
+                .frame(width: 680, height: 180)
             }
         }
-    }
-}
-
-/// Whether and how the app checks GitHub for new releases.
-private struct UpdatesSettingsView: View {
-    @Environment(UpdateChecker.self) private var updates
-    @AppStorage(UpdateChecker.automaticCheckKey) private var checksForUpdates = true
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Check for updates daily", isOn: $checksForUpdates)
-                    .help("Ask GitHub once a day whether a newer release exists")
-                LabeledContent("Installed version", value: updates.currentVersion)
-                Button("Check for Updates Now…") { updates.checkManually() }
-            } footer: {
-                Text("The check asks api.github.com for the latest release and sends nothing else. Updates are downloaded, never installed automatically.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 680, height: 220)
     }
 }
 
