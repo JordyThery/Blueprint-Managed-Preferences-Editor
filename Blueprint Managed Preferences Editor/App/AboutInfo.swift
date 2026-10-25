@@ -6,6 +6,7 @@ import JTKit
 extension AboutConfiguration {
     static let blueprintManagedPreferencesEditor = AboutConfiguration(
         appName: "Blueprint Managed Preferences Editor",
+        copyright: AboutCopyright(year: "2026", holder: "Jordy Thery"),
         author: "Created by Jordy Thery",
         summary: "Edit the Managed Preferences that Jamf Pro’s blueprint UI can’t.",
         links: [
