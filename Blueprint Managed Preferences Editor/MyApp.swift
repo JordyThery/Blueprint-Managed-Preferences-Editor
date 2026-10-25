@@ -23,10 +23,10 @@ import SwiftUI
         }
         .defaultSize(width: 1000, height: 650)
 
-        Settings {
-            SettingsView()
+        // JTKit's Settings window: General (Appearance), Connections, Updates.
+        SettingsWindow(updates: model.updates) {
+            ConnectionsSettingsTab()
                 .environment(model)
-                .environment(model.updates)
         }
     }
 }

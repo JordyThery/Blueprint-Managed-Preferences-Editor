@@ -1,21 +1,13 @@
 import JTKit
 import SwiftUI
 
-/// The Settings window: saved Jamf Platform API connections and the daily update check.
-struct SettingsView: View {
+/// The Connections tab of JTKit's Settings window (`SettingsWindow`), between
+/// its General tab (Appearance) and its Updates tab: saved Jamf Platform API
+/// connections.
+struct ConnectionsSettingsTab: View {
     var body: some View {
-        TabView {
-            Tab("Connections", systemImage: "network") {
-                ConnectionsSettingsView()
-            }
-            Tab("Updates", systemImage: "arrow.down.circle") {
-                Form {
-                    UpdateSettingsSection()
-                }
-                .formStyle(.grouped)
-                .frame(width: 680, height: 180)
-            }
-        }
+        ConnectionsSettingsView()
+            .tabItem { Label("Connections", systemImage: "network") }
     }
 }
 
