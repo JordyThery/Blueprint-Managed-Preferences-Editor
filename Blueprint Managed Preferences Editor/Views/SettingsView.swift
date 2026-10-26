@@ -37,7 +37,7 @@ extension AppModel {
         let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret))
         try await client.signIn()
         let results = await client.checkPermissions(Self.readChecks)
-        if let problem = ConnectionTestProblem(results) { throw problem }
+        if let problem = JamfPlatform.PermissionProblem(results) { throw problem }
         let page = try await JamfPlatform.Blueprints(client: client).listPage(page: 0, pageSize: 1)
         let count = page.totalCount.map { "\($0) blueprint\($0 == 1 ? "" : "s")" } ?? "blueprint list OK"
         return "Connected · \(count)"
@@ -52,40 +52,5 @@ extension AppModel {
             for: credentials.connection, secret: { secret },
             recorder: PlatformAPIClient.recorder(for: credentials, session: session, log: activityLog),
             permits: PlatformAPIClient.permits)
-    }
-}
-
-/// Signing in worked, but a read permission is missing or couldn't be checked.
-/// Each check gets one line: what to add, or why it couldn't be checked.
-nonisolated struct ConnectionTestProblem: LocalizedError {
-    let missing: [JamfPlatform.PermissionCheck]
-    let unchecked: [(check: JamfPlatform.PermissionCheck, reason: String)]
-
-    init?(_ results: [(check: JamfPlatform.PermissionCheck, result: JamfPlatform.PermissionResult)]) {
-        var missing = [JamfPlatform.PermissionCheck]()
-        var unchecked = [(check: JamfPlatform.PermissionCheck, reason: String)]()
-        for (check, result) in results {
-            switch result {
-            case .allowed: break
-            case .missingPermission: missing.append(check)
-            case .notFound: unchecked.append((check, "not found (HTTP 404)"))
-            case .failed(let status): unchecked.append((check, "HTTP \(status)"))
-            case .unreachable(let message): unchecked.append((check, message))
-            }
-        }
-        guard !missing.isEmpty || !unchecked.isEmpty else { return nil }
-        self.missing = missing
-        self.unchecked = unchecked
-    }
-
-    var errorDescription: String? {
-        missing.isEmpty
-            ? "Signed in, but not every permission could be checked."
-            : "Signed in, but the API integration is missing \(missing.count == 1 ? "a permission" : "permissions"): \(missing.map(\.permission).joined(separator: ", "))."
-    }
-
-    var failureReason: String? {
-        let lines = missing.map(\.hint) + unchecked.map { "\($0.check.name) couldn’t be checked: \($0.reason)" }
-        return lines.joined(separator: "\n")
     }
 }
