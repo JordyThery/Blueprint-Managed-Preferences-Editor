@@ -95,7 +95,8 @@ nonisolated extension PlatformCredentials {
             region: profile.region,
             environmentID: profile.environmentID.trimmingCharacters(in: .whitespacesAndNewlines),
             clientID: profile.clientID.trimmingCharacters(in: .whitespacesAndNewlines),
-            clientSecret: secret.trimmingCharacters(in: .whitespacesAndNewlines)
+            clientSecret: secret.trimmingCharacters(in: .whitespacesAndNewlines),
+            connectionName: profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 }

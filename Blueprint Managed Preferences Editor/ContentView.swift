@@ -50,11 +50,11 @@ struct ContentView: View {
                 .disabled(model.isBusy || model.profileStore.selectedProfile == nil)
 
                 Button {
-                    openWindow(id: WindowID.requestLog)
+                    openWindow(id: ActivityLogWindow.id)
                 } label: {
-                    Label("Request Log", systemImage: "list.bullet.rectangle")
+                    Label("Activity Log", systemImage: "list.bullet.rectangle")
                 }
-                .help("Show every API request and response (secrets redacted)")
+                .help("Show sign-ins and Jamf API calls (secrets redacted)")
             }
         }
         .sheet(isPresented: $isShowingFetchByID) {

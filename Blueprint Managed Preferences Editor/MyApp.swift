@@ -17,11 +17,11 @@ import SwiftUI
 
         AboutWindow(configuration: .blueprintManagedPreferencesEditor)
 
-        Window("Request Log", id: WindowID.requestLog) {
-            RequestLogView()
-                .environment(model)
-        }
-        .defaultSize(width: 1000, height: 650)
+        // JTKit's shared activity log (Window › Activity Log, ⇧⌘L).
+        ActivityLogWindow(
+            log: model.activityLog,
+            emptyDescription: "Sign-ins, Jamf API calls and retries appear here as they happen."
+        )
 
         // JTKit's Settings window: General (Appearance), Connections, Updates.
         SettingsWindow(updates: model.updates, opensTabsByName: true) {
@@ -33,7 +33,6 @@ import SwiftUI
 
 enum WindowID {
     static let main = "main"
-    static let requestLog = "request-log"
 }
 
 private struct AppCommands: Commands {
@@ -59,10 +58,6 @@ private struct AppCommands: Commands {
             Button("Refresh Blueprints") { model.refresh() }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(model.isBusy)
-        }
-        CommandGroup(after: .windowList) {
-            Button("Request Log") { openWindow(id: WindowID.requestLog) }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
         }
     }
 }

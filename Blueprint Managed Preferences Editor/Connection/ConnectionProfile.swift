@@ -56,6 +56,8 @@ nonisolated struct PlatformCredentials: Sendable, Equatable {
     var environmentID: String
     var clientID: String
     var clientSecret: String
+    /// Shown with each entry in the activity log.
+    var connectionName = ""
 }
 
 /// How JTKit's connections list and editor see a profile: a Jamf Platform API

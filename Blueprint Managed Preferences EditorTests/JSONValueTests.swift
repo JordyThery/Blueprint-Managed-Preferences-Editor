@@ -159,13 +159,12 @@ struct APIErrorTests {
         #expect(details.errors.map(\.code) == ["A", "B"])
     }
 
-    @Test func redactsSecrets() {
-        #expect(LogRedactor.formBody("grant_type=client_credentials&client_id=id&client_secret=s3cr3t")
-            == "grant_type=client_credentials&client_id=id&client_secret=<redacted>")
-        let body = LogRedactor.body(Data(#"{"access_token":"tok","expires_in":900}"#.utf8)) ?? ""
-        #expect(!body.contains("tok\""))
-        #expect(body.contains("<redacted>"))
-        let headers = LogRedactor.headers(["Authorization": "Bearer abc"])
-        #expect(headers.first?.1 == "Bearer <redacted>")
+    /// Error messages shown to the user go through JTKit's redaction.
+    @Test func errorMessagesAreRedacted() {
+        let body = #"{"message":"bad request","access_token":"tok-123"}"#
+        let error = APIError.http(status: 400, details: nil, body: body)
+        #expect(!error.localizedDescription.contains("tok-123"))
+        let signIn = APIError.authentication(status: 401, body: #"{"client_secret":"s3cr3t"}"#)
+        #expect(!signIn.localizedDescription.contains("s3cr3t"))
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// The Platform API error body: `{ httpStatus, traceId, errors: { code, field, description } }`.
 /// `errors` is parsed defensively as either a single object or an array of objects.
@@ -40,6 +41,8 @@ nonisolated struct PlatformErrorDetails: Sendable, Equatable {
 
 nonisolated enum APIError: Error, LocalizedError, Sendable {
     case missingCredentials
+    /// Refused by the request allow-list before anything reached the network.
+    case refused(method: String, path: String)
     case transport(String)
     case invalidResponse(String)
     case authentication(status: Int, body: String?)
@@ -58,6 +61,8 @@ nonisolated enum APIError: Error, LocalizedError, Sendable {
         switch self {
         case .missingCredentials:
             return "No complete connection is configured. Open Settings and add a region, Environment ID, Client ID and Client Secret."
+        case .refused(let method, let path):
+            return "Blocked \(method) \(path). The app only sends GET requests, token requests, and blueprint update and deploy requests; it never creates, deletes or undeploys."
         case .transport(let message):
             return "Network error: \(message)"
         case .invalidResponse(let message):
@@ -65,7 +70,7 @@ nonisolated enum APIError: Error, LocalizedError, Sendable {
         case .authentication(let status, let body):
             var message = "Authentication failed (HTTP \(status)). Check the Client ID, Client Secret and region."
             if let body, !body.isEmpty { message += "\n\(body.prefix(500))" }
-            return message
+            return Redaction.text(message)
         case .http(let status, let details, let body):
             var lines = ["HTTP \(status) \(HTTPURLResponse.localizedString(forStatusCode: status).capitalized)"]
             if let details {
@@ -79,7 +84,7 @@ nonisolated enum APIError: Error, LocalizedError, Sendable {
             } else if let body, !body.isEmpty {
                 lines.append(String(body.prefix(500)))
             }
-            return lines.joined(separator: "\n")
+            return Redaction.text(lines.joined(separator: "\n"))
         }
     }
 }

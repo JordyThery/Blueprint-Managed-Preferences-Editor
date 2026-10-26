@@ -3,7 +3,7 @@ import JTKit
 import Observation
 
 /// App-wide state: the active connection, discovered blueprints, their editors
-/// and the request log.
+/// and JTKit's activity log.
 @Observable
 final class AppModel {
     enum DiscoveryState: Equatable {
@@ -21,7 +21,8 @@ final class AppModel {
     }
 
     let profileStore = ProfileStore()
-    let requestLog = RequestLog()
+    /// JTKit's activity log (Window › Activity Log, ⇧⌘L), filled by the Jamf client.
+    let activityLog = ActivityLog()
     let updates = UpdateChecker(configuration: UpdateConfiguration(
         owner: "JordyThery",
         repository: "Blueprint-Managed-Preferences-Editor",
@@ -115,10 +116,7 @@ final class AppModel {
     }
 
     func makeClient(credentials: PlatformCredentials) -> PlatformAPIClient {
-        let log = requestLog
-        return PlatformAPIClient(credentials: credentials) { entry in
-            log.append(entry)
-        }
+        PlatformAPIClient(credentials: credentials, log: activityLog)
     }
 
     /// Called when the user switches profile: clears everything loaded from the old tenant.

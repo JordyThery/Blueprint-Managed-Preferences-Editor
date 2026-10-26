@@ -31,7 +31,7 @@ Download the latest notarized build from [Releases](https://github.com/JordyTher
 - **Review before saving**: a diff of old and new values for each domain and key, then **Save** or **Save & Deploy**.
 - **Undo and redo** for every edit. Unsaved changes are marked on the window and in the sidebar.
 - **Multiple connections** to switch between tenants.
-- **Request log and raw JSON**: every API call is logged with secrets redacted, and the raw JSON view shows the exact body Save will send.
+- **Activity log and raw JSON**: every sign-in and API call is logged (Window › Activity Log, ⇧⌘L) with secrets redacted; request contents are never logged, and the raw JSON view shows the exact body Save will send. Only GET requests, token requests, and blueprint update and deploy requests are ever sent.
 
 ## Saving safely
 
@@ -60,7 +60,7 @@ The Blueprints API applies updates as a JSON merge-patch, and a merge-patch repl
 
 - **Credentials** stay on your Mac. Client secrets are stored in the keychain; the other connection settings are stored in user defaults.
 - **Network**: the app talks only to `{region}.api.jamfcloud.com`, plus one daily request to GitHub asking whether a newer release exists. That request sends nothing else and can be turned off in Settings.
-- **Request log**: kept in memory only, with tokens and secrets redacted.
+- **Activity log**: kept in memory only, with tokens and secrets redacted. Request contents are never recorded, and responses only when the server reports an error. **Export for Bug Report…** hides serial numbers, emails and device names.
 - **Backups** contain the blueprint's JSON and no credentials. They are stored unencrypted in your user Library.
 - **No sandbox**: the app is not sandboxed, so backups are written to the exact path above. It runs with the Hardened Runtime.
 

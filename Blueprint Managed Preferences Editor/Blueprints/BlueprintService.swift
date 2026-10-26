@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// Typed access to the Blueprints API (`/blueprints/v1/...`).
 nonisolated struct BlueprintService: Sendable {
