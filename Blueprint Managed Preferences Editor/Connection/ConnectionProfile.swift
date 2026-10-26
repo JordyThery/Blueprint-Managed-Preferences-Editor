@@ -1,37 +1,16 @@
 import Foundation
 import JTKit
 
-/// Jamf Platform API region.
-nonisolated enum PlatformRegion: String, Codable, CaseIterable, Identifiable, Sendable {
-    case us
-    case eu
-    case apac
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .us: "United States (us)"
-        case .eu: "Europe (eu)"
-        case .apac: "Asia Pacific (apac)"
-        }
-    }
-
-    /// `https://{region}.api.jamfcloud.com`
-    var baseURL: URL {
-        URL(string: "https://\(rawValue).api.jamfcloud.com")!
-    }
-}
-
 /// A saved tenant connection. The client secret is NOT stored here: it lives in the
 /// Keychain, keyed by `id`.
 ///
 /// Saved under the UserDefaults key `connectionProfiles` with these field names;
-/// keep them, or saved connections are lost.
+/// keep them, or saved connections are lost. The region is JTKit's `JamfRegion`,
+/// saved as the same "us", "eu" or "apac".
 nonisolated struct ConnectionProfile: Codable, Identifiable, Hashable, Sendable {
     var id = UUID()
     var name: String
-    var region: PlatformRegion
+    var region: JamfRegion
     var environmentID: String
     var clientID: String
 
@@ -52,12 +31,18 @@ nonisolated struct ConnectionProfile: Codable, Identifiable, Hashable, Sendable 
 
 /// Everything the API client needs to talk to one tenant.
 nonisolated struct PlatformCredentials: Sendable, Equatable {
-    var region: PlatformRegion
+    var region: JamfRegion
     var environmentID: String
     var clientID: String
     var clientSecret: String
     /// Shown with each entry in the activity log.
     var connectionName = ""
+
+    /// The JTKit connection the Platform client is built from.
+    var connection: Connection {
+        Connection(name: connectionName, service: .jamfPlatform, region: region,
+                   environmentID: environmentID, clientID: clientID)
+    }
 }
 
 /// How JTKit's connections list and editor see a profile: a Jamf Platform API
@@ -66,12 +51,11 @@ nonisolated extension ConnectionProfile: ConnectionRecord {
     var connection: Connection {
         get {
             Connection(id: id, name: name, service: .jamfPlatform,
-                       region: JamfRegion(rawValue: region.rawValue) ?? .us,
-                       environmentID: environmentID, clientID: clientID)
+                       region: region, environmentID: environmentID, clientID: clientID)
         }
         set {
             name = newValue.name
-            region = PlatformRegion(rawValue: newValue.region.rawValue) ?? region
+            region = newValue.region
             environmentID = newValue.environmentID
             clientID = newValue.clientID
         }

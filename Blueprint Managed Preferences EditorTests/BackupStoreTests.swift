@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Testing
 @testable import Blueprint_Managed_Preferences_Editor
 
@@ -9,7 +10,7 @@ struct BackupStoreTests {
 
     @Test func writesExactBytes() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let detail = try BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
+        let detail = try JamfPlatform.BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
         let url = try BackupStore.write(detail, date: date, root: root)
         #expect(try Data(contentsOf: url) == Data(sampleBlueprintJSON.utf8))
         #expect(url.deletingLastPathComponent().lastPathComponent == detail.id)
@@ -17,9 +18,9 @@ struct BackupStoreTests {
 
     @Test func sameNameDoesNotOverwrite() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let first = try BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
+        let first = try JamfPlatform.BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
         let changedJSON = sampleBlueprintJSON.replacingOccurrences(of: "Microsoft AutoUpdate – Legacy", with: "Changed")
-        let second = try BlueprintDetail(data: Data(changedJSON.utf8))
+        let second = try JamfPlatform.BlueprintDetail(data: Data(changedJSON.utf8))
         let firstURL = try BackupStore.write(first, date: date, root: root)
         let secondURL = try BackupStore.write(second, date: date, root: root)
         #expect(firstURL != secondURL, "A second backup at the same instant replaced the first")
@@ -29,7 +30,7 @@ struct BackupStoreTests {
 
     @Test func sameInstantBackupsListNewestFirst() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let detail = try BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
+        let detail = try JamfPlatform.BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
         // Ten backups in the same millisecond get "", "-2" … "-10"; one a second later is newest.
         let sameInstant = try (1...10).map { _ in try BackupStore.write(detail, date: date, root: root) }
         let later = try BackupStore.write(detail, date: date.addingTimeInterval(1), root: root)

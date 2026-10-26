@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// MCX management modes.
 nonisolated enum ManagementMode {
@@ -15,15 +16,15 @@ nonisolated struct MCXEntry: Identifiable, Hashable, Sendable {
     var settings: [PlistNode]
     /// The item as loaded. Keys other than `mcx_preference_settings` (such as
     /// `mcx_data_timestamp`) are written back unchanged and in their original order.
-    var item: JSONObject
+    var item: LosslessJSON.Object
 
-    init(mode: String, settings: [PlistNode], item: JSONObject = JSONObject()) {
+    init(mode: String, settings: [PlistNode], item: LosslessJSON.Object = LosslessJSON.Object()) {
         self.mode = mode
         self.settings = settings
         self.item = item
     }
 
-    var serializedItem: JSONObject {
+    var serializedItem: LosslessJSON.Object {
         var result = item
         result[ManagementMode.settingsKey] = .object(settings.jsonObject)
         return result
@@ -36,7 +37,7 @@ nonisolated struct PreferenceDomain: Identifiable, Hashable, Sendable {
         /// The expected `{ mode: [ { mcx_preference_settings } ] }` shape, one entry per item.
         case entries([MCXEntry])
         /// Anything else: kept verbatim and shown read-only.
-        case unsupported(JSONValue, reason: String)
+        case unsupported(LosslessJSON, reason: String)
     }
 
     var id = UUID()
@@ -61,7 +62,7 @@ nonisolated struct PreferenceDomain: Identifiable, Hashable, Sendable {
     }
 
     /// Parses a domain value, falling back to `.unsupported` for unexpected shapes.
-    init(name: String, json: JSONValue) {
+    init(name: String, json: LosslessJSON) {
         self.name = name
         guard let object = json.objectValue else {
             content = .unsupported(json, reason: "The domain value is a \(json.typeName), not an object of management modes.")
@@ -95,12 +96,12 @@ nonisolated struct PreferenceDomain: Identifiable, Hashable, Sendable {
     }
 
     /// Groups entries by mode, in order of first appearance.
-    var json: JSONValue {
+    var json: LosslessJSON {
         switch content {
         case .unsupported(let raw, _):
             return raw
         case .entries(let entries):
-            var object = JSONObject()
+            var object = LosslessJSON.Object()
             for entry in entries {
                 var items = object[entry.mode]?.arrayValue ?? []
                 items.append(.object(entry.serializedItem))
@@ -114,9 +115,9 @@ nonisolated struct PreferenceDomain: Identifiable, Hashable, Sendable {
 /// An editable `com.apple.ManagedClient.preferences` payloadContent item.
 nonisolated struct ManagedPreferencesPayload: Identifiable, Hashable, Sendable {
     /// Absolute path from the blueprint root to the payloadContent item.
-    let path: [JSONPathComponent]
+    let path: [LosslessJSON.PathComponent]
     /// The item as loaded; every key except `PayloadContent` is written back unchanged.
-    let item: JSONObject
+    let item: LosslessJSON.Object
     let displayName: String
     var domains: [PreferenceDomain]
     /// Set when the payload cannot be edited; it is then never modified.
@@ -142,9 +143,9 @@ nonisolated struct ManagedPreferencesPayload: Identifiable, Hashable, Sendable {
         }
     }
 
-    var serializedItem: JSONObject {
+    var serializedItem: LosslessJSON.Object {
         var result = item
-        result[Self.contentKey] = .object(JSONObject(domains.map { .init(key: $0.name, value: $0.json) }))
+        result[Self.contentKey] = .object(LosslessJSON.Object(domains.map { .init(key: $0.name, value: $0.json) }))
         return result
     }
 }
@@ -153,16 +154,16 @@ nonisolated struct ManagedPreferencesPayload: Identifiable, Hashable, Sendable {
 /// edited payloads. Everything outside the payloads' `PayloadContent` comes from
 /// `base.json` untouched.
 nonisolated struct BlueprintEditDocument: Sendable {
-    let base: BlueprintDetail
+    let base: JamfPlatform.BlueprintDetail
     var payloads: [ManagedPreferencesPayload]
 
-    init(detail: BlueprintDetail) {
+    init(detail: JamfPlatform.BlueprintDetail) {
         base = detail
         payloads = detail.managedPreferencePayloads.map(ManagedPreferencesPayload.init(location:))
     }
 
     /// The blueprint JSON with each editable payload replaced at its path.
-    var updatedBlueprintJSON: JSONValue {
+    var updatedBlueprintJSON: LosslessJSON {
         var json = base.json
         for payload in payloads where payload.isEditable {
             json.setValue(.object(payload.serializedItem), at: payload.path)
@@ -172,14 +173,14 @@ nonisolated struct BlueprintEditDocument: Sendable {
 
     /// The complete steps array to send. Merge-patch replaces arrays wholesale,
     /// so this always contains every step and component.
-    var updatedSteps: JSONValue? { updatedBlueprintJSON["steps"] }
+    var updatedSteps: LosslessJSON? { updatedBlueprintJSON["steps"] }
 
     var hasChanges: Bool { updatedSteps != base.steps }
 
     /// `{"steps": [...]}`. Never includes divisionId or any other field.
     var patchBody: Data? {
         guard let steps = updatedSteps else { return nil }
-        return JSONValue.object(JSONObject(["steps": steps])).serialized()
+        return LosslessJSON.object(LosslessJSON.Object(["steps": steps])).serialized()
     }
 
     // MARK: Lookup and mutation helpers
@@ -230,8 +231,8 @@ nonisolated struct BlueprintEditDocument: Sendable {
     var changes: [PreferenceChange] {
         var result: [PreferenceChange] = []
         for payload in payloads where payload.isEditable {
-            let oldContent = base.json.value(at: payload.path)?[ManagedPreferencesPayload.contentKey]?.objectValue ?? JSONObject()
-            let newContent = payload.serializedItem[ManagedPreferencesPayload.contentKey]?.objectValue ?? JSONObject()
+            let oldContent = base.json.value(at: payload.path)?[ManagedPreferencesPayload.contentKey]?.objectValue ?? LosslessJSON.Object()
+            let newContent = payload.serializedItem[ManagedPreferencesPayload.contentKey]?.objectValue ?? LosslessJSON.Object()
             result += PreferenceChange.diff(old: oldContent, new: newContent, payloadName: payload.displayName, payloadID: payload.id)
         }
         return result
@@ -255,7 +256,7 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
 
     var id: String { "\(payloadID)|\(domain)|\(keyPath)" }
 
-    static func diff(old: JSONObject, new: JSONObject, payloadName: String, payloadID: String) -> [PreferenceChange] {
+    static func diff(old: LosslessJSON.Object, new: LosslessJSON.Object, payloadName: String, payloadID: String) -> [PreferenceChange] {
         var result: [PreferenceChange] = []
         let domainNames = orderedUnion(old.keys, new.keys)
         for domain in domainNames {
@@ -284,10 +285,10 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
 
     /// Flattens to leaf values keyed by a readable path. The `mcx_preference_settings`
     /// level is hidden, and item indices are only shown when a mode has several items.
-    private static func flatten(_ value: JSONValue?) -> [(path: String, value: JSONValue)] {
+    private static func flatten(_ value: LosslessJSON?) -> [(path: String, value: LosslessJSON)] {
         guard let value else { return [] }
-        var leaves: [(path: String, value: JSONValue)] = []
-        func visit(_ value: JSONValue, _ components: [String]) {
+        var leaves: [(path: String, value: LosslessJSON)] = []
+        func visit(_ value: LosslessJSON, _ components: [String]) {
             switch value {
             case .object(let object) where !object.isEmpty:
                 for member in object.members {

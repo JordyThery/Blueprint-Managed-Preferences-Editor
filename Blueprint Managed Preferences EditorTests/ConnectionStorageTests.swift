@@ -71,6 +71,16 @@ final class ConnectionStorageTests {
         #expect(try JSONDecoder().decode([ConnectionProfile].self, from: saved) == [renamed, oldProfiles[1]])
     }
 
+    /// The region is JTKit's `JamfRegion` now; saved values stay "us", "eu" and "apac".
+    @Test(arguments: ["us", "eu", "apac"])
+    func savedRegionsReadAndWriteAsBefore(raw: String) throws {
+        let saved = #"[{"id":"\#(first.uuidString)","name":"P","region":"\#(raw)","environmentID":"","clientID":""}]"#
+        let profiles = try JSONDecoder().decode([ConnectionProfile].self, from: Data(saved.utf8))
+        #expect(profiles.first?.region.rawValue == raw)
+        let written = try #require(try JSONSerialization.jsonObject(with: try JSONEncoder().encode(profiles)) as? [[String: Any]])
+        #expect(written.first?["region"] as? String == raw)
+    }
+
     @Test func theConnectionMapsToAJamfPlatformConnectionAndBack() {
         var profile = oldProfiles[0]
         let connection = profile.connection

@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 nonisolated struct BlueprintBackup: Identifiable, Hashable, Sendable {
     let url: URL
@@ -9,7 +10,7 @@ nonisolated struct BlueprintBackup: Identifiable, Hashable, Sendable {
     var id: URL { url }
 }
 
-/// Writes the full BlueprintDetail JSON before every PATCH to
+/// Writes the full JamfPlatform.BlueprintDetail JSON before every PATCH to
 /// `~/Library/Application Support/Blueprint Managed Preferences Editor/Backups/<blueprintId>/<timestamp>.json`.
 nonisolated enum BackupStore {
     struct BackupError: Error, LocalizedError {
@@ -37,7 +38,7 @@ nonisolated enum BackupStore {
 
     /// Writes the exact bytes of `detail` as received from the server.
     @discardableResult
-    static func write(_ detail: BlueprintDetail, date: Date = Date(), root: URL = rootURL) throws -> URL {
+    static func write(_ detail: JamfPlatform.BlueprintDetail, date: Date = Date(), root: URL = rootURL) throws -> URL {
         let directory = directory(for: detail.id, root: root)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -82,9 +83,9 @@ nonisolated enum BackupStore {
             }
     }
 
-    static func load(_ backup: BlueprintBackup) throws -> BlueprintDetail {
+    static func load(_ backup: BlueprintBackup) throws -> JamfPlatform.BlueprintDetail {
         let data = try Data(contentsOf: backup.url)
-        let detail = try BlueprintDetail(data: data)
+        let detail = try JamfPlatform.BlueprintDetail(data: data)
         guard detail.id == backup.blueprintID else {
             throw BackupError(message: "The backup belongs to blueprint \(detail.id), not \(backup.blueprintID).")
         }

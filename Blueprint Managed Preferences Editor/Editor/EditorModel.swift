@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import JTKit
 import Observation
 
 /// What the detail column shows for a blueprint.
@@ -56,14 +57,14 @@ final class EditorModel {
     weak var undoManager: UndoManager?
     @ObservationIgnored private unowned let app: AppModel
 
-    init(detail: BlueprintDetail, app: AppModel) {
+    init(detail: JamfPlatform.BlueprintDetail, app: AppModel) {
         blueprintID = detail.id
         document = BlueprintEditDocument(detail: detail)
         self.app = app
     }
 
-    var base: BlueprintDetail { document.base }
-    var isReadOnly: Bool { app.readOnlyBlueprintIDs.contains(blueprintID) }
+    var base: JamfPlatform.BlueprintDetail { document.base }
+    var isReadOnly: Bool { app.isReadOnly(blueprintID) }
     var isBusy: Bool { operation != .idle }
     var canEdit: Bool { !isReadOnly && !isBusy }
 
@@ -119,7 +120,7 @@ final class EditorModel {
     }
 
     /// Replaces the baseline with a freshly loaded detail, discarding edits and undo history.
-    func reset(to detail: BlueprintDetail) {
+    func reset(to detail: JamfPlatform.BlueprintDetail) {
         let selectedName: String? = {
             if case .domain(let id) = selection { return document.domain(withID: id)?.name }
             return nil
@@ -256,17 +257,17 @@ final class EditorModel {
 
             // 1. Optimistic concurrency.
             let latest = try await service.detail(id: blueprintID)
-            guard latest.overview.updated == snapshot.base.overview.updated else {
+            guard snapshot.base.isUnchanged(in: latest) else {
                 alert = conflictAlert(latest: latest)
                 return
             }
 
             // 2. Backup of the full detail as it is on the server right now.
-            try BackupStore.write(latest)
+            try BackupStore.write(latest, root: app.backupRoot)
 
             // 3. PATCH the complete steps array.
             guard let steps = snapshot.updatedSteps else {
-                throw APIError.invalidResponse("The blueprint has no steps array to update.")
+                throw JamfPlatformError(.invalidResponse("The blueprint has no steps array to update."))
             }
             try await service.patchSteps(id: blueprintID, steps: steps)
 
@@ -314,11 +315,11 @@ final class EditorModel {
             }
             let service = try app.currentService()
             let latest = try await service.detail(id: blueprintID)
-            guard latest.overview.updated == base.overview.updated else {
+            guard base.isUnchanged(in: latest) else {
                 alert = conflictAlert(latest: latest)
                 return
             }
-            try BackupStore.write(latest)
+            try BackupStore.write(latest, root: app.backupRoot)
             try await service.patchSteps(id: blueprintID, steps: steps)
             guard await reloadAfterWrite(service: service) else { return }
             alert = Alert(kind: .info, title: "Restored", message: "The steps from the backup of \(backup.date.formatted(date: .abbreviated, time: .standard)) were restored. Deploy to apply them to devices.")
@@ -342,7 +343,7 @@ final class EditorModel {
     }
 
     /// Reloads after a successful write. Returns false (with an alert) if the reload failed.
-    private func reloadAfterWrite(service: BlueprintService) async -> Bool {
+    private func reloadAfterWrite(service: JamfPlatform.Blueprints) async -> Bool {
         do {
             let fresh = try await service.detail(id: blueprintID)
             app.store(fresh)
@@ -354,7 +355,7 @@ final class EditorModel {
         }
     }
 
-    private func conflictAlert(latest: BlueprintDetail) -> Alert {
+    private func conflictAlert(latest: JamfPlatform.BlueprintDetail) -> Alert {
         Alert(
             kind: .conflict,
             title: "Blueprint Changed on the Server",
@@ -363,9 +364,10 @@ final class EditorModel {
     }
 
     private func handle(_ error: Error, action: String) {
-        if let apiError = error as? APIError, apiError.hasErrorCode("DIVISION_PATCH_NOT_ALLOWED") {
+        // JTKit's message ends with the hint that the Blueprint is assigned to a division.
+        if let platformError = error as? JamfPlatformError, platformError.hasCode(.divisionPatchNotAllowed) {
             app.readOnlyBlueprintIDs.insert(blueprintID)
-            alert = Alert(kind: .error, title: "Blueprint Is Read-Only", message: "This blueprint is assigned to a division and can't be changed through the API.\n\n\(apiError.localizedDescription)")
+            alert = Alert(kind: .error, title: "Blueprint Is Read-Only", message: platformError.localizedDescription)
             return
         }
         if error is CancellationError { return }

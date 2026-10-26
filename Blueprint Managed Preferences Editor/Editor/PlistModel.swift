@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 
 /// The value types offered by the key/value editor.
 nonisolated enum PlistType: String, CaseIterable, Identifiable, Sendable {
@@ -23,8 +24,8 @@ nonisolated enum PlistType: String, CaseIterable, Identifiable, Sendable {
 /// round-trip exactly. `.null` only exists to preserve unexpected JSON nulls.
 nonisolated enum PlistValue: Hashable, Sendable {
     case string(String)
-    case integer(JSONNumber)
-    case real(JSONNumber)
+    case integer(LosslessJSON.Number)
+    case real(LosslessJSON.Number)
     case boolean(Bool)
     case date(String)
     case data(String)
@@ -97,7 +98,7 @@ nonisolated extension PlistValue {
 
 nonisolated extension PlistValue {
     /// Infers Boolean, Integer, Real, String, Array and Dictionary from JSON.
-    init(json: JSONValue) {
+    init(json: LosslessJSON) {
         switch json {
         case .null: self = .null
         case .bool(let value): self = .boolean(value)
@@ -110,13 +111,13 @@ nonisolated extension PlistValue {
         }
     }
 
-    var json: JSONValue {
+    var json: LosslessJSON {
         switch self {
         case .string(let text), .date(let text), .data(let text): .string(text)
         case .integer(let number), .real(let number): .number(number)
         case .boolean(let value): .bool(value)
         case .array(let nodes): .array(nodes.map(\.value.json))
-        case .dictionary(let nodes): .object(JSONObject(nodes.map { .init(key: $0.key, value: $0.value.json) }))
+        case .dictionary(let nodes): .object(LosslessJSON.Object(nodes.map { .init(key: $0.key, value: $0.value.json) }))
         case .null: .null
         }
     }
@@ -124,12 +125,12 @@ nonisolated extension PlistValue {
 
 nonisolated extension Array where Element == PlistNode {
     /// Nodes of a dictionary from a JSON object, in order.
-    init(jsonObject: JSONObject) {
+    init(jsonObject: LosslessJSON.Object) {
         self = jsonObject.members.map { PlistNode(key: $0.key, value: PlistValue(json: $0.value)) }
     }
 
-    var jsonObject: JSONObject {
-        JSONObject(map { .init(key: $0.key, value: $0.value.json) })
+    var jsonObject: LosslessJSON.Object {
+        LosslessJSON.Object(map { .init(key: $0.key, value: $0.value.json) })
     }
 }
 
@@ -154,15 +155,15 @@ nonisolated enum PlistParsing {
             guard trimmed.wholeMatch(of: integerPattern) != nil else {
                 return .failure(PlistValidationError(message: "“\(text)” is not an integer."))
             }
-            return .success(.integer(JSONNumber(literal: normalizedInteger(trimmed))))
+            return .success(.integer(LosslessJSON.Number(literal: normalizedInteger(trimmed))))
         case .real:
             guard let double = Double(trimmed), double.isFinite else {
                 return .failure(PlistValidationError(message: "“\(text)” is not a number."))
             }
-            var literal = trimmed.wholeMatch(of: jsonNumberPattern) != nil ? trimmed : (JSONNumber(double)?.literal ?? "0.0")
+            var literal = trimmed.wholeMatch(of: jsonNumberPattern) != nil ? trimmed : (LosslessJSON.Number(double)?.literal ?? "0.0")
             // Keep it a real on the next load: a literal without "." or exponent reads back as an integer.
             if !literal.contains(where: { $0 == "." || $0 == "e" || $0 == "E" }) { literal += ".0" }
-            return .success(.real(JSONNumber(literal: literal)))
+            return .success(.real(LosslessJSON.Number(literal: literal)))
         case .boolean:
             switch trimmed.lowercased() {
             case "true", "yes", "1": return .success(.boolean(true))
@@ -170,7 +171,7 @@ nonisolated enum PlistParsing {
             default: return .failure(PlistValidationError(message: "Use true or false."))
             }
         case .date:
-            guard PlatformDate.parse(trimmed) != nil else {
+            guard JamfPlatform.date(from: trimmed) != nil else {
                 return .failure(PlistValidationError(message: "“\(text)” is not an ISO 8601 date, for example 2026-01-31T09:00:00Z."))
             }
             return .success(.date(trimmed))
@@ -207,20 +208,20 @@ nonisolated extension PlistValue {
             return .string(children == nil && self != .null ? editText : "")
         case .integer:
             switch self {
-            case .boolean(let value): return .integer(JSONNumber(value ? 1 : 0))
+            case .boolean(let value): return .integer(LosslessJSON.Number(value ? 1 : 0))
             case .real(let number):
                 if let double = number.doubleValue, let int = Int(exactly: double.rounded(.towardZero)) {
-                    return .integer(JSONNumber(int))
+                    return .integer(LosslessJSON.Number(int))
                 }
-                return .integer(JSONNumber(0))
+                return .integer(LosslessJSON.Number(0))
             default:
                 if case .success(let value) = PlistParsing.value(from: editText, as: .integer) { return value }
-                return .integer(JSONNumber(0))
+                return .integer(LosslessJSON.Number(0))
             }
         case .real:
-            if case .boolean(let value) = self { return .real(JSONNumber(literal: value ? "1.0" : "0.0")) }
+            if case .boolean(let value) = self { return .real(LosslessJSON.Number(literal: value ? "1.0" : "0.0")) }
             if children == nil, case .success(let value) = PlistParsing.value(from: editText, as: .real) { return value }
-            return .real(JSONNumber(literal: "0.0"))
+            return .real(LosslessJSON.Number(literal: "0.0"))
         case .boolean:
             if children == nil, case .success(let value) = PlistParsing.value(from: editText, as: .boolean) { return value }
             if case .integer(let number) = self { return .boolean(number.intValue != 0) }

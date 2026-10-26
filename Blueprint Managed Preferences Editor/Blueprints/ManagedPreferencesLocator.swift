@@ -1,11 +1,12 @@
 import Foundation
+import JTKit
 
 /// Where a `com.apple.ManagedClient.preferences` payload was found inside a blueprint.
 nonisolated struct ManagedPreferencesPayloadLocation: Hashable, Sendable, Identifiable {
     /// Path from the blueprint root to the payloadContent item.
-    let path: [JSONPathComponent]
+    let path: [LosslessJSON.PathComponent]
     /// The payloadContent item itself.
-    let payload: JSONObject
+    let payload: LosslessJSON.Object
     /// `configuration.payloadDisplayName` of the owning component, if found.
     let payloadDisplayName: String?
     /// Top-level keys of the payload's `PayloadContent` object (the preference domains).
@@ -24,7 +25,7 @@ nonisolated enum ManagedPreferencesLocator {
     static let payloadType = "com.apple.ManagedClient.preferences"
     static let ddmComponentIdentifier = "com.jamf.ddm-configuration-profile"
 
-    static func locate(in blueprint: JSONValue) -> [ManagedPreferencesPayloadLocation] {
+    static func locate(in blueprint: LosslessJSON) -> [ManagedPreferencesPayloadLocation] {
         let matches = blueprint.findObjects { object in
             (object["payloadType"] ?? object["PayloadType"])?.stringValue == payloadType
         }
@@ -34,9 +35,9 @@ nonisolated enum ManagedPreferencesLocator {
     }
 
     private static func describe(
-        _ payload: JSONObject,
-        at path: [JSONPathComponent],
-        in blueprint: JSONValue
+        _ payload: LosslessJSON.Object,
+        at path: [LosslessJSON.PathComponent],
+        in blueprint: LosslessJSON
     ) -> ManagedPreferencesPayloadLocation {
         var warnings: [String] = []
 
