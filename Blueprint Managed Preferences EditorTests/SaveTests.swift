@@ -157,7 +157,7 @@ final class SaveTests {
         do {
             _ = try await app.testConnection(profile, typedSecret: nil)
             Issue.record("Expected a missing permission")
-        } catch let problem as ConnectionTestProblem {
+        } catch let problem as JamfPlatform.PermissionProblem {
             #expect(problem.missing.map(\.permission) == ["blueprints:read"])
             #expect(problem.localizedDescription.contains("blueprints:read"))
         }
