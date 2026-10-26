@@ -1,3 +1,4 @@
+import JTKit
 import SwiftUI
 
 struct SidebarView: View {
@@ -9,10 +10,10 @@ struct SidebarView: View {
             ForEach(model.visibleOverviews) { overview in
                 BlueprintRow(
                     overview: overview,
-                    detail: model.details[overview.id],
+                    domains: model.preferenceDomains[overview.id] ?? [],
                     error: model.detailErrors[overview.id],
                     isDirty: model.editors[overview.id]?.isDirty == true,
-                    isReadOnly: model.readOnlyBlueprintIDs.contains(overview.id)
+                    isReadOnly: model.isReadOnly(overview.id)
                 )
                 .tag(overview.id)
             }
@@ -95,8 +96,9 @@ private struct DiscoveryStatusView: View {
 }
 
 struct BlueprintRow: View {
-    let overview: BlueprintOverview
-    let detail: BlueprintDetail?
+    let overview: JamfPlatform.BlueprintOverview
+    /// The Blueprint's preference domains, once its details are loaded.
+    let domains: [String]
     let error: String?
     var isDirty = false
     var isReadOnly = false
@@ -134,8 +136,8 @@ struct BlueprintRow: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .lineLimit(2)
-            } else if let detail, !detail.preferenceDomains.isEmpty {
-                Text(detail.preferenceDomains.joined(separator: ", "))
+            } else if !domains.isEmpty {
+                Text(domains.joined(separator: ", "))
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -146,7 +148,7 @@ struct BlueprintRow: View {
 }
 
 struct DeploymentStateBadge: View {
-    let state: DeploymentStateKind
+    let state: JamfPlatform.BlueprintState
 
     var body: some View {
         Text(state.displayName)

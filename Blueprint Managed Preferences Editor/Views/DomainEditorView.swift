@@ -1,4 +1,5 @@
 import AppKit
+import JTKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -310,7 +311,7 @@ private struct PastePlistSheet: View {
 
     private func apply() {
         let data = Data(text.utf8)
-        if let json = try? JSONValue(data: data), let object = json.objectValue {
+        if let json = try? LosslessJSON(data: data), let object = json.objectValue {
             commit(Array(jsonObject: object))
             dismiss()
             return

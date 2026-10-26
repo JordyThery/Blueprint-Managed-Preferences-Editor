@@ -20,24 +20,37 @@ final class AppModel {
         var id: String { rawValue }
     }
 
-    let profileStore = ProfileStore()
+    let profileStore: ProfileStore
     /// JTKit's activity log (Window › Activity Log, ⇧⌘L), filled by the Jamf client.
     let activityLog = ActivityLog()
+    /// Where requests go: the network, or a fake server in tests.
+    let session: URLSession
+    /// Where backups are written before every save and restore.
+    let backupRoot: URL
     let updates = UpdateChecker(configuration: UpdateConfiguration(
         owner: "JordyThery",
         repository: "Blueprint-Managed-Preferences-Editor",
         appName: "Blueprint Managed Preferences Editor"
     ))
 
-    private(set) var overviews: [BlueprintOverview] = []
-    private(set) var details: [String: BlueprintDetail] = [:]
+    private(set) var overviews: [JamfPlatform.BlueprintOverview] = []
+    private(set) var details: [String: JamfPlatform.BlueprintDetail] = [:]
     private(set) var detailErrors: [String: String] = [:]
+    /// The preference domains of each Blueprint with a ManagedClient payload,
+    /// found once when it is stored: finding them walks the whole JSON.
+    private(set) var preferenceDomains: [String: [String]] = [:]
     private(set) var discoveryState: DiscoveryState = .idle
     /// One editor per blueprint with a ManagedClient payload, kept while switching
     /// between blueprints so unsaved edits survive.
     private(set) var editors: [String: EditorModel] = [:]
     /// Blueprints that returned 409 DIVISION_PATCH_NOT_ALLOWED.
     var readOnlyBlueprintIDs: Set<String> = []
+
+    /// Whether a Blueprint may not be written: assigned to a division, or
+    /// refused for that before.
+    func isReadOnly(_ id: String) -> Bool {
+        readOnlyBlueprintIDs.contains(id) || details[id]?.isDivisionLocked == true
+    }
 
     var sidebarFilter: SidebarFilter = .managedPreferences
     var searchText = ""
@@ -46,8 +59,16 @@ final class AppModel {
     /// Maximum number of detail GETs in flight during discovery.
     let maxConcurrentDetailRequests = 5
 
-    private var client: PlatformAPIClient?
+    /// JTKit's client for the selected profile, kept while its credentials stay the same.
+    private var client: (credentials: PlatformCredentials, client: JamfPlatform.Client)?
     private var refreshTask: Task<Void, Never>?
+
+    /// - Parameters: all for tests: saved connections, the network and the backup folder.
+    init(profileStore: ProfileStore = ProfileStore(), session: URLSession = .shared, backupRoot: URL = BackupStore.rootURL) {
+        self.profileStore = profileStore
+        self.session = session
+        self.backupRoot = backupRoot
+    }
 
     var isBusy: Bool {
         switch discoveryState {
@@ -101,22 +122,27 @@ final class AppModel {
         profileStore.selectedProfileID = pending.profileID
     }
 
-    /// Returns a client for the selected profile, rebuilding it when credentials change.
-    func currentService() throws -> BlueprintService {
+    /// The client for the selected profile, rebuilt when its credentials change.
+    func currentClient() throws -> JamfPlatform.Client {
         guard let profile = profileStore.selectedProfile,
               let credentials = profileStore.credentials(for: profile) else {
             throw APIError.missingCredentials
         }
         if let client, client.credentials == credentials {
-            return BlueprintService(client: client)
+            return client.client
         }
-        let newClient = makeClient(credentials: credentials)
-        client = newClient
-        return BlueprintService(client: newClient)
+        let newClient = try makeClient(credentials: credentials)
+        client = (credentials, newClient)
+        return newClient
     }
 
-    func makeClient(credentials: PlatformCredentials) -> PlatformAPIClient {
-        PlatformAPIClient(credentials: credentials, log: activityLog)
+    /// The Blueprints API for the selected profile.
+    func currentService() throws -> JamfPlatform.Blueprints {
+        JamfPlatform.Blueprints(client: try currentClient())
+    }
+
+    func makeClient(credentials: PlatformCredentials) throws -> JamfPlatform.Client {
+        try PlatformAPIClient.make(credentials: credentials, session: session, log: activityLog)
     }
 
     /// Called when the user switches profile: clears everything loaded from the old tenant.
@@ -126,6 +152,7 @@ final class AppModel {
         overviews = []
         details = [:]
         detailErrors = [:]
+        preferenceDomains = [:]
         for editor in editors.values { editor.detachUndoHistory() }
         editors = [:]
         readOnlyBlueprintIDs = []
@@ -138,9 +165,11 @@ final class AppModel {
     /// Records a freshly fetched detail. Editors without unsaved changes are
     /// rebased onto it; editors with unsaved changes keep their baseline (the
     /// concurrency check at save time catches server-side changes).
-    func store(_ detail: BlueprintDetail) {
+    func store(_ detail: JamfPlatform.BlueprintDetail) {
         details[detail.id] = detail
         detailErrors[detail.id] = nil
+        let payloads = detail.managedPreferencePayloads
+        preferenceDomains[detail.id] = payloads.isEmpty ? nil : JamfPlatform.BlueprintDetail.domains(of: payloads)
         if let index = overviews.firstIndex(where: { $0.id == detail.id }) {
             overviews[index] = detail.overview
         } else {
@@ -148,7 +177,7 @@ final class AppModel {
         }
         if let editor = editors[detail.id] {
             if !editor.isDirty && !editor.isBusy { editor.reset(to: detail) }
-        } else if detail.containsManagedPreferences {
+        } else if !payloads.isEmpty {
             editors[detail.id] = EditorModel(detail: detail, app: self)
         }
     }
@@ -161,7 +190,7 @@ final class AppModel {
     }
 
     private func runDiscovery() async {
-        let service: BlueprintService
+        let service: JamfPlatform.Blueprints
         do {
             service = try currentService()
         } catch {
@@ -170,9 +199,9 @@ final class AppModel {
         }
 
         discoveryState = .listing
-        let list: [BlueprintOverview]
+        let list: [JamfPlatform.BlueprintOverview]
         do {
-            list = try await service.listAll()
+            list = try await service.list()
         } catch is CancellationError {
             return
         } catch {
@@ -192,11 +221,12 @@ final class AppModel {
         let keptIDs = retained.keys.filter { !listedIDs.contains($0) }.sorted()
         overviews = list + keptIDs.compactMap { retained[$0]?.base.overview }
         details = details.filter { listedIDs.contains($0.key) || retained[$0.key] != nil }
+        preferenceDomains = preferenceDomains.filter { details[$0.key] != nil }
         detailErrors = [:]
         discoveryState = .fetchingDetails(completed: 0, total: list.count)
 
         // Fetch details with a bounded number of requests in flight.
-        await withTaskGroup(of: (String, Result<BlueprintDetail, Error>).self) { group in
+        await withTaskGroup(of: (String, Result<JamfPlatform.BlueprintDetail, Error>).self) { group in
             var pending = list.map(\.id)[...]
             var completed = 0
 
@@ -240,27 +270,27 @@ final class AppModel {
         let detail = try await currentService().detail(id: trimmed)
         store(detail)
         // Make sure the fetched blueprint is visible even if it has no ManagedClient payload.
-        if !detail.containsManagedPreferences { sidebarFilter = .all }
+        if preferenceDomains[detail.id] == nil { sidebarFilter = .all }
         selectedBlueprintID = detail.id
     }
 
     // MARK: Sidebar
 
-    var visibleOverviews: [BlueprintOverview] {
+    var visibleOverviews: [JamfPlatform.BlueprintOverview] {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         return overviews.filter { overview in
-            let detail = details[overview.id]
+            let domains = preferenceDomains[overview.id]
             if sidebarFilter == .managedPreferences {
-                guard detail?.containsManagedPreferences == true else { return false }
+                guard domains != nil else { return false }
             }
             guard !query.isEmpty else { return true }
             if overview.name.localizedCaseInsensitiveContains(query) { return true }
             if overview.description?.localizedCaseInsensitiveContains(query) == true { return true }
-            return detail?.preferenceDomains.contains { $0.localizedCaseInsensitiveContains(query) } ?? false
+            return domains?.contains { $0.localizedCaseInsensitiveContains(query) } ?? false
         }
     }
 
     var managedPreferencesCount: Int {
-        details.values.filter(\.containsManagedPreferences).count
+        preferenceDomains.count
     }
 }

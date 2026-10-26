@@ -1,14 +1,15 @@
 import Foundation
+import JTKit
 import Testing
 @testable import Blueprint_Managed_Preferences_Editor
 
 private func document(_ json: String) throws -> BlueprintEditDocument {
-    BlueprintEditDocument(detail: try BlueprintDetail(data: Data(json.utf8)))
+    BlueprintEditDocument(detail: try JamfPlatform.BlueprintDetail(data: Data(json.utf8)))
 }
 
 /// Extracts the exact `"steps":[...]` bytes from a compact response.
 private func rawSteps(of json: String) throws -> String {
-    let value = try JSONValue(string: json)
+    let value = try LosslessJSON(string: json)
     let steps = try #require(value["steps"]).serializedString()
     #expect(json.contains("\"steps\":" + steps))
     return steps
@@ -29,7 +30,7 @@ struct BlueprintFixtureRoundTripTests {
 
     @Test func patchBodyContainsOnlySteps() throws {
         let doc = try document(emailBlueprintJSON)
-        let body = try JSONValue(data: try #require(doc.patchBody))
+        let body = try LosslessJSON(data: try #require(doc.patchBody))
         #expect(body.objectValue?.keys == ["steps"])
         #expect(String(decoding: try #require(doc.patchBody), as: UTF8.self) == "{\"steps\":\(try rawSteps(of: emailBlueprintJSON))}")
     }
@@ -121,7 +122,7 @@ struct EditingTests {
             entries[0].mode = "Set-Once"
             domain.content = .entries(entries)
         }
-        doc.payloads[0].domains.append(.new(name: "com.example.added", settings: [PlistNode(key: "A", value: .integer(JSONNumber(1)))]))
+        doc.payloads[0].domains.append(.new(name: "com.example.added", settings: [PlistNode(key: "A", value: .integer(LosslessJSON.Number(1)))]))
 
         let content = try #require(doc.updatedBlueprintJSON.value(at: doc.payloads[0].path + [.key("PayloadContent")]))
         #expect(content.serializedString() == #"{"com.apple.applicationaccess.new":{"Set-Once":[{"mcx_preference_settings":{"allowRosettaUsageAwareness":false}}]},"com.example.added":{"Forced":[{"mcx_preference_settings":{"A":1}}]}}"#)
@@ -161,17 +162,17 @@ struct EditingTests {
 @Suite("Plist values")
 struct PlistValueTests {
     @Test func inferenceOnLoad() throws {
-        let value = PlistValue(json: try JSONValue(string: #"{"s":"a","i":1000,"r":0.5,"b":true,"d":"2024-01-01T00:00:00Z","a":[1],"n":null}"#))
+        let value = PlistValue(json: try LosslessJSON(string: #"{"s":"a","i":1000,"r":0.5,"b":true,"d":"2024-01-01T00:00:00Z","a":[1],"n":null}"#))
         guard case .dictionary(let nodes) = value else { Issue.record(); return }
         #expect(nodes.map(\.value.type) == [.string, .integer, .real, .boolean, .string, .array, nil])
     }
 
     @Test func validation() {
-        #expect(PlistParsing.value(from: "42", as: .integer) == .success(.integer(JSONNumber(42))))
-        #expect(PlistParsing.value(from: "007", as: .integer) == .success(.integer(JSONNumber(7))))
+        #expect(PlistParsing.value(from: "42", as: .integer) == .success(.integer(LosslessJSON.Number(42))))
+        #expect(PlistParsing.value(from: "007", as: .integer) == .success(.integer(LosslessJSON.Number(7))))
         #expect((try? PlistParsing.value(from: "4.2", as: .integer).get()) == nil)
-        #expect(PlistParsing.value(from: "5", as: .real) == .success(.real(JSONNumber(literal: "5.0"))))
-        #expect(PlistParsing.value(from: "2.50", as: .real) == .success(.real(JSONNumber(literal: "2.50"))))
+        #expect(PlistParsing.value(from: "5", as: .real) == .success(.real(LosslessJSON.Number(literal: "5.0"))))
+        #expect(PlistParsing.value(from: "2.50", as: .real) == .success(.real(LosslessJSON.Number(literal: "2.50"))))
         #expect((try? PlistParsing.value(from: "abc", as: .real).get()) == nil)
         #expect(PlistParsing.value(from: "2026-01-31T09:00:00Z", as: .date) == .success(.date("2026-01-31T09:00:00Z")))
         #expect((try? PlistParsing.value(from: "31/01/2026", as: .date).get()) == nil)
@@ -184,13 +185,13 @@ struct PlistValueTests {
             PlistNode(key: "When", value: .date("2026-01-31T09:00:00Z")),
             PlistNode(key: "Blob", value: .data("aGVsbG8=")),
         ]
-        #expect(JSONValue.object(nodes.jsonObject).serializedString() == #"{"When":"2026-01-31T09:00:00Z","Blob":"aGVsbG8="}"#)
+        #expect(LosslessJSON.object(nodes.jsonObject).serializedString() == #"{"When":"2026-01-31T09:00:00Z","Blob":"aGVsbG8="}"#)
     }
 
     @Test func typeConversion() {
-        #expect(PlistValue.string("12").converted(to: .integer) == .integer(JSONNumber(12)))
-        #expect(PlistValue.string("x").converted(to: .integer) == .integer(JSONNumber(0)))
-        #expect(PlistValue.integer(JSONNumber(1)).converted(to: .boolean) == .boolean(true))
+        #expect(PlistValue.string("12").converted(to: .integer) == .integer(LosslessJSON.Number(12)))
+        #expect(PlistValue.string("x").converted(to: .integer) == .integer(LosslessJSON.Number(0)))
+        #expect(PlistValue.integer(LosslessJSON.Number(1)).converted(to: .boolean) == .boolean(true))
         #expect(PlistValue.string("aGVsbG8=").converted(to: .data) == .data("aGVsbG8="))
         #expect(PlistValue.string("2026-01-31T09:00:00Z").converted(to: .date) == .date("2026-01-31T09:00:00Z"))
         let id = UUID()
@@ -222,9 +223,9 @@ struct PlistValueTests {
 struct ImportExportTests {
     @Test func plistRoundTripKeepsTypes() throws {
         let nodes: [PlistNode] = [
-            PlistNode(key: "Count", value: .integer(JSONNumber(3))),
+            PlistNode(key: "Count", value: .integer(LosslessJSON.Number(3))),
             PlistNode(key: "Enabled", value: .boolean(true)),
-            PlistNode(key: "Ratio", value: .real(JSONNumber(literal: "0.5"))),
+            PlistNode(key: "Ratio", value: .real(LosslessJSON.Number(literal: "0.5"))),
             PlistNode(key: "When", value: .date("2026-01-31T09:00:00Z")),
             PlistNode(key: "Blob", value: .data("aGVsbG8=")),
             PlistNode(key: "List", value: .array([PlistNode(key: "", value: .string("a"))])),
@@ -234,9 +235,9 @@ struct ImportExportTests {
         #expect(imported.count == 1)
         #expect(imported[0].name == "com.example.app")
         let byKey = Dictionary(uniqueKeysWithValues: imported[0].settings.map { ($0.key, $0.value) })
-        #expect(byKey["Count"] == .integer(JSONNumber(3)))
+        #expect(byKey["Count"] == .integer(LosslessJSON.Number(3)))
         #expect(byKey["Enabled"] == .boolean(true))
-        #expect(byKey["Ratio"] == .real(JSONNumber(literal: "0.5")))
+        #expect(byKey["Ratio"] == .real(LosslessJSON.Number(literal: "0.5")))
         #expect(byKey["When"] == .date("2026-01-31T09:00:00Z"))
         #expect(byKey["Blob"] == .data("aGVsbG8="))
         #expect(byKey["List"]?.children?.first?.value == .string("a"))

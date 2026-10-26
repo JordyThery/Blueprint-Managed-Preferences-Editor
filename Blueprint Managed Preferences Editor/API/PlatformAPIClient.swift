@@ -38,111 +38,53 @@ nonisolated enum RequestAllowList {
     }
 }
 
-/// Talks to the Jamf Platform API for one tenant through JTKit: its Jamf token
-/// provider signs in, and its HTTP client adds `X-Environment-Id`, checks every
-/// request against `RequestAllowList`, retries by JTKit's rules and writes each
-/// attempt, wait and refusal to the activity log. JTKit's errors become `APIError`,
-/// so the app's messages stay the same.
-nonisolated struct PlatformAPIClient: Sendable {
-    /// Which failures a request may be automatically retried on.
-    enum RetryPolicy: Sendable {
-        /// Retry on 429, 5xx and short network drops. Use for GET and the
-        /// full-replacement PATCH, which are safe to repeat.
-        case idempotent
-        /// Retry only on 429, where the server guarantees it did not process the
-        /// request. Use for actions with side effects, such as deploy.
-        case rateLimitOnly
-    }
-
-    let credentials: PlatformCredentials
-    private let tokens: JamfTokenProvider
-    private let http: HTTPClient
+/// Makes JTKit's Jamf Platform API client for one tenant, with this app's
+/// allow-list (`RequestAllowList`) and its own hint when a request is refused.
+/// JTKit signs in, adds `X-Environment-Id`, retries by its rules, reads error
+/// answers and writes each attempt, wait and refusal to the activity log.
+nonisolated enum PlatformAPIClient {
+    /// Shown below a refused request, before JTKit's standard hints.
+    static let refusedHint = "The app only sends GET requests, token requests, and blueprint update and deploy requests; it never creates, deletes or undeploys."
 
     /// - Parameters:
     ///   - log: JTKit's activity log; nil records nothing (tests).
     ///   - sleep: the wait before a retry, injectable for tests.
-    init(
+    /// - Throws: `JamfPlatformError` when the Environment ID isn't a UUID.
+    static func make(
         credentials: PlatformCredentials,
         session: URLSession = .shared,
         log: ActivityLog?,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
-    ) {
-        self.credentials = credentials
-        let recorder = RequestRecorder(
+    ) throws -> JamfPlatform.Client {
+        let secret = credentials.clientSecret
+        return try JamfPlatform.Client(
+            connection: credentials.connection,
+            secret: { secret },
+            recorder: recorder(for: credentials, session: session, log: log),
+            permits: permits,
+            hints: hints(for:),
+            sleep: sleep
+        )
+    }
+
+    /// Writes this tenant's requests to the activity log, under its name.
+    static func recorder(for credentials: PlatformCredentials, session: URLSession = .shared, log: ActivityLog?) -> RequestRecorder {
+        RequestRecorder(
             session: session,
             log: log,
             service: ConnectionService.jamfPlatform.displayName,
             connection: credentials.connectionName.isEmpty ? nil : credentials.connectionName
         )
-        let secret = credentials.clientSecret
-        tokens = JamfTokenProvider(
-            tokenURL: credentials.region.baseURL.appending(path: "auth/token"),
-            method: .apiClient(clientID: credentials.clientID),
-            secret: { secret },
-            recorder: recorder
-        )
-        http = HTTPClient(
-            baseURL: credentials.region.baseURL,
-            tokens: tokens,
-            recorder: recorder,
-            headers: ["X-Environment-Id": credentials.environmentID],
-            permits: { RequestAllowList.isPermitted(method: $0.method.uppercased(), path: $0.path) },
-            sleep: sleep
-        )
     }
 
-    // MARK: Public API
-
-    /// Sends a request to `{region}.api.jamfcloud.com{path}` and returns the response
-    /// for any 2xx status. Non-2xx statuses are thrown as `APIError.http`.
-    /// `path` must already be valid percent-encoded path text; it is not encoded again.
-    func send(
-        method: String,
-        path: String,
-        query: [URLQueryItem] = [],
-        body: Data? = nil,
-        contentType: String? = nil,
-        retryPolicy: RetryPolicy = .idempotent
-    ) async throws -> HTTPResponse {
-        let request = HTTPRequest(
-            method: method,
-            path: path,
-            query: query,
-            body: body,
-            contentType: contentType,
-            safeToRepeat: retryPolicy == .idempotent
-        )
-        do {
-            return try await http.send(request)
-        } catch let error as HTTPError {
-            throw Self.apiError(error)
-        }
+    /// The allow-list, as JTKit's client asks for it.
+    static let permits: @Sendable (HTTPRequest) -> Bool = {
+        RequestAllowList.isPermitted(method: $0.method.uppercased(), path: $0.path)
     }
 
-    /// Fetches a fresh token, ignoring the cache. Used by "Test connection".
-    func refreshToken() async throws {
-        await tokens.forgetToken()
-        do {
-            _ = try await tokens.token()
-        } catch let error as HTTPError {
-            throw Self.apiError(error)
-        }
-    }
-
-    /// JTKit's error as the app's, with any server text redacted.
-    static func apiError(_ error: HTTPError) -> APIError {
-        switch error {
-        case let .refused(method, path):
-            return .refused(method: method, path: path)
-        case let .transport(_, _, _, message):
-            return .transport(message)
-        case let .status(response, _, _, duringSignIn):
-            let body = Redaction.body(response.data, contentType: response.header("Content-Type"))
-            return duringSignIn
-                ? .authentication(status: response.status, body: body)
-                : .http(status: response.status, details: PlatformErrorDetails(data: response.data), body: body)
-        case let .invalidURL(message), let .decoding(message):
-            return .invalidResponse(message)
-        }
+    /// The app's own hints for an error.
+    static func hints(for error: JamfPlatformError) -> [String] {
+        if case .refused = error.kind { return [refusedHint] }
+        return []
     }
 }

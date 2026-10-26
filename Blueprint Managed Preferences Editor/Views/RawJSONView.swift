@@ -1,11 +1,12 @@
 import AppKit
+import JTKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 /// Raw JSON debug view: the GET response exactly as received or pretty-printed,
 /// and, when there are unsaved edits, the exact PATCH body that Save would send.
 struct RawJSONView: View {
-    let detail: BlueprintDetail
+    let detail: JamfPlatform.BlueprintDetail
     var pendingPatchBody: Data?
 
     @State private var format: Format = .pretty
@@ -29,7 +30,7 @@ struct RawJSONView: View {
         switch effectiveFormat {
         case .pretty: detail.json.serialized(pretty: true)
         case .exact: detail.rawData
-        case .patch: pendingPatchBody.flatMap { try? JSONValue(data: $0).serialized(pretty: true) } ?? Data()
+        case .patch: pendingPatchBody.flatMap { try? LosslessJSON(data: $0).serialized(pretty: true) } ?? Data()
         }
     }
 
@@ -90,7 +91,7 @@ struct RawJSONView: View {
 
 /// Name, state and timestamps of a blueprint.
 struct BlueprintHeader: View {
-    let detail: BlueprintDetail
+    let detail: JamfPlatform.BlueprintDetail
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -112,7 +113,7 @@ struct BlueprintHeader: View {
             }
             if let deployment = detail.overview.deploymentState,
                let started = deployment.lastDeploymentStarted {
-                Text("Last deployment \(PlatformDate.parse(started)?.formatted(date: .abbreviated, time: .shortened) ?? started)\(deployment.lastDeploymentState.map { " · \(DeploymentStateKind(rawValue: $0).displayName)" } ?? "")")
+                Text("Last deployment \(JamfPlatform.date(from: started)?.formatted(date: .abbreviated, time: .shortened) ?? started)\(deployment.lastDeploymentState.map { " · \(JamfPlatform.BlueprintState(rawValue: $0).displayName)" } ?? "")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .help(started)

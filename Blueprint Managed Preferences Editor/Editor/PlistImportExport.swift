@@ -1,4 +1,5 @@
 import Foundation
+import JTKit
 import Security
 
 // MARK: - Foundation property list conversion
@@ -15,12 +16,12 @@ nonisolated extension PlistValue {
             if CFGetTypeID(number) == CFBooleanGetTypeID() {
                 self = .boolean(number.boolValue)
             } else if CFNumberIsFloatType(number) {
-                self = .real(JSONNumber(number.doubleValue) ?? JSONNumber(literal: "0.0"))
+                self = .real(LosslessJSON.Number(number.doubleValue) ?? LosslessJSON.Number(literal: "0.0"))
                 if case .real(let real) = self, real.isInteger {
-                    self = .real(JSONNumber(literal: real.literal + ".0"))
+                    self = .real(LosslessJSON.Number(literal: real.literal + ".0"))
                 }
             } else {
-                self = .integer(JSONNumber(literal: String(number.int64Value)))
+                self = .integer(LosslessJSON.Number(literal: String(number.int64Value)))
             }
         case let date as Date:
             self = .date(PlistParsing.isoString(from: date))
@@ -51,7 +52,7 @@ nonisolated extension PlistValue {
         case .boolean(let value):
             return NSNumber(value: value)
         case .date(let text):
-            return PlatformDate.parse(text) ?? text
+            return JamfPlatform.date(from: text) ?? text
         case .data(let text):
             return Data(base64Encoded: text) ?? text
         case .array(let nodes):
