@@ -57,10 +57,22 @@ nonisolated enum PlatformAPIClient {
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) throws -> JamfPlatform.Client {
         let secret = credentials.clientSecret
-        return try JamfPlatform.Client(
-            connection: credentials.connection,
-            secret: { secret },
-            recorder: recorder(for: credentials, session: session, log: log),
+        return try make(connection: credentials.connection, secret: { secret }, session: session, log: log, sleep: sleep)
+    }
+
+    /// The same for a connection and a way to read its secret, e.g. JTKit's
+    /// demo connection (`DemoMode.jamfPlatform()`), logged as "Contoso (Demo)".
+    static func make(
+        connection: Connection,
+        secret: @escaping @Sendable () throws -> String,
+        session: URLSession,
+        log: ActivityLog?,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) throws -> JamfPlatform.Client {
+        try JamfPlatform.Client(
+            connection: connection,
+            secret: secret,
+            recorder: recorder(named: connection.name, session: session, log: log),
             permits: permits,
             hints: hints(for:),
             sleep: sleep
@@ -69,11 +81,15 @@ nonisolated enum PlatformAPIClient {
 
     /// Writes this tenant's requests to the activity log, under its name.
     static func recorder(for credentials: PlatformCredentials, session: URLSession = .shared, log: ActivityLog?) -> RequestRecorder {
+        recorder(named: credentials.connectionName, session: session, log: log)
+    }
+
+    private static func recorder(named name: String, session: URLSession, log: ActivityLog?) -> RequestRecorder {
         RequestRecorder(
             session: session,
             log: log,
             service: ConnectionService.jamfPlatform.displayName,
-            connection: credentials.connectionName.isEmpty ? nil : credentials.connectionName
+            connection: name.isEmpty ? nil : name
         )
     }
 

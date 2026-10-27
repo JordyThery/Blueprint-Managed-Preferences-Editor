@@ -39,7 +39,7 @@ struct ContentView: View {
                     Label("Fetch by ID", systemImage: "number")
                 }
                 .help("Fetch one blueprint by ID")
-                .disabled(model.profileStore.selectedProfile == nil)
+                .disabled(!model.hasActiveConnection)
 
                 Button {
                     model.refresh()
@@ -47,7 +47,7 @@ struct ContentView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .help("Discover blueprints that contain Managed Preferences")
-                .disabled(model.isBusy || model.profileStore.selectedProfile == nil)
+                .disabled(model.isBusy || !model.hasActiveConnection)
 
                 Button {
                     openWindow(id: ActivityLogWindow.id)
@@ -66,7 +66,15 @@ struct ContentView: View {
         .onChange(of: model.profileStore.selectedProfileID) {
             model.connectionDidChange()
         }
+        // Into or out of demo mode: another connection. The demo's sample
+        // Blueprints load straight away.
+        .onChange(of: model.demo.isOn) {
+            model.connectionDidChange()
+            if model.demo.isOn { model.refresh() }
+        }
+        .task { if model.demo.isOn { model.refresh() } }
         .confirmsConnectionSwitch(from: .mainWindow)
+        .confirmsDemoModeSwitch(model.demo)
         .background(WindowEditedMarker(isEdited: model.hasUnsavedChanges))
         .frame(minWidth: 1100, minHeight: 600)
     }
@@ -89,13 +97,14 @@ struct ContentView: View {
             } else {
                 Color.clear
             }
-        } else if model.profileStore.selectedProfile == nil {
+        } else if !model.hasActiveConnection {
             ContentUnavailableView {
                 Label("No Connection", systemImage: "network.slash")
             } description: {
-                Text("Add a Jamf Platform API connection in Settings to get started.")
+                Text("Add a Jamf Platform API connection in Settings, or try the app with sample data.")
             } actions: {
                 SettingsLink { Text("Open Settings…") }
+                Button("Try Demo Mode") { model.demo.requestSwitch(to: true) }
             }
         } else {
             ContentUnavailableView(
@@ -122,8 +131,9 @@ private struct WindowEditedMarker: NSViewRepresentable {
 }
 
 /// Toolbar menu for switching between saved connections, with Edit Connections…
-/// (JTKit's `ConnectionPicker`, the same items as the Connection menu). Asks
-/// first when there are unsaved edits, since switching discards them.
+/// and Demo Mode (JTKit's `ConnectionPicker`, the same items as the Connection
+/// menu). Reads "Contoso (Demo)" in demo mode. Asks first when there are
+/// unsaved edits, since switching discards them.
 private struct ProfilePicker: View {
     @Environment(AppModel.self) private var model
 
@@ -131,20 +141,26 @@ private struct ProfilePicker: View {
         ConnectionPicker(
             store: model.profileStore.connections,
             selection: model.connectionSelection(from: .mainWindow),
-            itemTitle: \.menuTitle
-        )
+            itemTitle: \.menuTitle,
+            label: model.demo.isOn ? .demo(.demoJamfPlatform) : nil,
+            help: model.demo.isOn ? DemoMode.helpText : nil
+        ) {
+            DemoModeToggle(demo: model.demo)
+        }
     }
 }
 
 extension AppModel {
     /// The active connection for JTKit's picker, menu and Connections tab.
-    /// Choosing another one while blueprint edits are unsaved asks first.
+    /// Choosing another one while blueprint edits are unsaved asks first. In
+    /// demo mode the picker and menu show none chosen; choosing one there
+    /// leaves demo mode. Settings › Connections keeps showing the saved choice.
     /// - Parameter whenAsking: runs when the question is shown, e.g. to
     ///   bring the main window forward for the Connection menu.
     func connectionSelection(from origin: ConnectionSwitchOrigin,
                              whenAsking: @escaping () -> Void = {}) -> Binding<UUID?> {
         Binding(
-            get: { self.profileStore.selectedProfileID },
+            get: { origin == .mainWindow && self.demo.isOn ? nil : self.profileStore.selectedProfileID },
             set: { if self.chooseConnection($0, from: origin) { whenAsking() } }
         )
     }

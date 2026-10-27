@@ -69,7 +69,7 @@ struct RestoreBackupSheet: View {
             .padding()
         }
         .frame(width: 560, height: 420)
-        .onAppear { backups = BackupStore.backups(for: editor.blueprintID) }
+        .onAppear { backups = BackupStore.backups(for: editor.blueprintID, root: editor.backupRoot) }
         .confirmationDialog(
             "Restore “\(editor.base.overview.name)” from this backup?",
             isPresented: $isConfirming,

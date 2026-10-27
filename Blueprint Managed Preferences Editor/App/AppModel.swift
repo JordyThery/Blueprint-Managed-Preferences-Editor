@@ -23,10 +23,20 @@ final class AppModel {
     let profileStore: ProfileStore
     /// JTKit's activity log (Window › Activity Log, ⇧⌘L), filled by the Jamf client.
     let activityLog = ActivityLog()
-    /// Where requests go: the network, or a fake server in tests.
+    /// Where requests for real connections go: the network, or a fake server
+    /// in tests. Also while demo mode is on (Test Connection in Settings).
     let session: URLSession
-    /// Where backups are written before every save and restore.
-    let backupRoot: URL
+    /// JTKit's demo mode, saved under `demoMode`: sample Blueprints on a fake
+    /// server inside the app instead of the saved connection.
+    let demo: DemoMode
+    /// Where backups of real connections go.
+    private let savedBackupRoot: URL
+    /// Where backups are written before every save and restore, and where the
+    /// Restore list reads them: in demo mode the demo's temporary folder, never
+    /// the real one.
+    var backupRoot: URL {
+        demo.isOn ? demo.scratchDirectory.appending(path: "Backups", directoryHint: .isDirectory) : savedBackupRoot
+    }
     let updates = UpdateChecker(configuration: UpdateConfiguration(
         owner: "JordyThery",
         repository: "Blueprint-Managed-Preferences-Editor",
@@ -61,13 +71,36 @@ final class AppModel {
 
     /// JTKit's client for the selected profile, kept while its credentials stay the same.
     private var client: (credentials: PlatformCredentials, client: JamfPlatform.Client)?
+    /// The demo's client, one for the whole launch, like the demo server.
+    private var demoClient: JamfPlatform.Client?
     private var refreshTask: Task<Void, Never>?
 
-    /// - Parameters: all for tests: saved connections, the network and the backup folder.
-    init(profileStore: ProfileStore = ProfileStore(), session: URLSession = .shared, backupRoot: URL = BackupStore.rootURL) {
+    static let demoModeKey = "demoMode"
+
+    /// - Parameters: all for tests: saved connections, the network, the
+    ///   backup folder and demo mode (off and not saved unless given).
+    init(profileStore: ProfileStore = ProfileStore(), session: URLSession = .shared,
+         backupRoot: URL = BackupStore.rootURL, demo: DemoMode? = nil) {
         self.profileStore = profileStore
         self.session = session
-        self.backupRoot = backupRoot
+        self.savedBackupRoot = backupRoot
+        self.demo = demo ?? DemoMode(key: Self.demoModeKey, arguments: [DemoMode.launchArgument, "NO"])
+        // Turning demo mode on or off discards the editors, so unsaved edits ask first.
+        self.demo.asksBeforeSwitching = { [unowned self] in self.hasUnsavedChanges }
+    }
+
+    /// The app as launched. A sandbox run (`-JTKitSandbox YES`, UI tests)
+    /// keeps connections and secrets in memory.
+    static func forLaunch() -> AppModel {
+        let demo = DemoMode(key: demoModeKey)
+        guard demo.isSandbox else { return AppModel(demo: demo) }
+        return AppModel(profileStore: ProfileStore(defaults: DemoMode.sandboxDefaults(), secrets: SandboxSecretStore()),
+                        demo: demo)
+    }
+
+    /// Demo mode is on or a saved connection is chosen.
+    var hasActiveConnection: Bool {
+        demo.isOn || profileStore.selectedProfile != nil
     }
 
     var isBusy: Bool {
@@ -85,7 +118,8 @@ final class AppModel {
 
     /// Where another connection was chosen: the main window (toolbar picker,
     /// Connection menu) or Settings › Connections. The question about unsaved
-    /// changes appears there.
+    /// changes appears there. In demo mode the main window shows no saved
+    /// connection as chosen, so choosing one there leaves demo mode.
     enum ConnectionSwitchOrigin {
         case mainWindow
         case settings
@@ -100,18 +134,20 @@ final class AppModel {
 
     var pendingConnectionSwitch: PendingConnectionSwitch?
 
-    /// Makes `profileID` the active connection or, when blueprint edits are
-    /// unsaved, keeps it waiting for "Discard and Switch", since switching
-    /// discards them. Returns true when it asks first. Clearing the choice
-    /// (after the active connection was deleted) never asks.
+    /// Makes `profileID` the active connection, leaving demo mode, or, when
+    /// blueprint edits are unsaved, keeps it waiting for "Discard and Switch",
+    /// since switching discards them. Returns true when it asks first.
+    /// Clearing the choice (after the active connection was deleted) never
+    /// asks and stays in demo mode.
     @discardableResult
     func chooseConnection(_ profileID: UUID?, from origin: ConnectionSwitchOrigin) -> Bool {
-        guard profileID != profileStore.selectedProfileID else { return false }
+        let leavesDemo = demo.isOn && origin == .mainWindow && profileID != nil
+        guard profileID != profileStore.selectedProfileID || leavesDemo else { return false }
         if let profileID, hasUnsavedChanges {
             pendingConnectionSwitch = PendingConnectionSwitch(profileID: profileID, origin: origin)
             return true
         }
-        profileStore.selectedProfileID = profileID
+        select(profileID)
         return false
     }
 
@@ -119,11 +155,20 @@ final class AppModel {
     func confirmConnectionSwitch() {
         guard let pending = pendingConnectionSwitch else { return }
         pendingConnectionSwitch = nil
-        profileStore.selectedProfileID = pending.profileID
+        select(pending.profileID)
     }
 
-    /// The client for the selected profile, rebuilt when its credentials change.
+    /// The question about unsaved edits was already asked (or not needed).
+    private func select(_ profileID: UUID?) {
+        if profileID != nil { demo.isOn = false }
+        profileStore.selectedProfileID = profileID
+    }
+
+    /// The client for the selected profile, rebuilt when its credentials
+    /// change. In demo mode the demo's, which reads no saved connection or
+    /// Keychain item and reaches only the demo server.
     func currentClient() throws -> JamfPlatform.Client {
+        if demo.isOn { return try currentDemoClient() }
         guard let profile = profileStore.selectedProfile,
               let credentials = profileStore.credentials(for: profile) else {
             throw APIError.missingCredentials
@@ -141,8 +186,22 @@ final class AppModel {
         JamfPlatform.Blueprints(client: try currentClient())
     }
 
+    /// A client for a real connection, on the real network, also while demo
+    /// mode is on (Test Connection).
     func makeClient(credentials: PlatformCredentials) throws -> JamfPlatform.Client {
         try PlatformAPIClient.make(credentials: credentials, session: session, log: activityLog)
+    }
+
+    /// The demo's client, with the app's allow-list; the first one also adds
+    /// the app's sample Blueprints (`DemoBlueprints`) to the demo server.
+    private func currentDemoClient() throws -> JamfPlatform.Client {
+        if let demoClient { return demoClient }
+        demo.jamfPlatformServer.add(DemoBlueprints.all)
+        let source = demo.jamfPlatform()
+        let made = try PlatformAPIClient.make(connection: source.connection, secret: source.secret,
+                                              session: source.session, log: activityLog)
+        demoClient = made
+        return made
     }
 
     /// Called when the user switches profile: clears everything loaded from the old tenant.

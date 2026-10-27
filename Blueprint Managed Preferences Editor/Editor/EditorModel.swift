@@ -65,6 +65,8 @@ final class EditorModel {
 
     var base: JamfPlatform.BlueprintDetail { document.base }
     var isReadOnly: Bool { app.isReadOnly(blueprintID) }
+    /// The backup folder in use: the demo's temporary one in demo mode.
+    var backupRoot: URL { app.backupRoot }
     var isBusy: Bool { operation != .idle }
     var canEdit: Bool { !isReadOnly && !isBusy }
 
