@@ -25,6 +25,7 @@ A macOS app for Jamf Pro admins. When Jamf Pro turns a classic profile with an A
 - `API/`: `RequestAllowList` and `PlatformAPIClient` (builds JTKit's client with the app's allow-list and hint); `APIError`.
 - `Connection/`: `ConnectionProfile`, `ProfileStore` (on JTKit's `ConnectionStore`).
 - `ContentView.swift` and `Views/`: SwiftUI (sidebar, Blueprint column, domain editor, plist outline, review, restore, raw JSON).
+- Demo mode (ROADMAP step 10): `AppModel.demo` is JTKit's `DemoMode`, saved under `demoMode`. In demo mode `currentClient()` uses JTKit's demo connection ("Contoso (Demo)") with the app's allow-list; the first demo client adds `App/DemoBlueprints` (three Contoso Blueprints with Managed Preferences, in the service's stored form) to JTKit's demo server. `backupRoot` is then the demo's temporary folder; Restore and Show in Finder read `backupRoot` too. Test Connection always uses the real connection and network. Unsaved edits ask before demo mode is switched (`asksBeforeSwitching` + `confirmsDemoModeSwitch`) and before a saved connection is chosen from it. `AppModel.forLaunch()` handles `-JTKitSandbox` (in-memory connections, no update check).
 
 From JTKit: `JamfPlatform` (client, Blueprints list/get/PATCH steps/deploy, error format, `PermissionProblem`, environments), `LosslessJSON`, `JamfRegion`, `RequestRecorder` + `ActivityLog` + `ActivityLogWindow`, `ConnectionStore` + `KeychainSecretStore` + `ConnectionsSettingsTab` + `ConnectionPicker` + `ConnectionCommands`, `AboutWindow`, `SettingsWindow`, `UpdateChecker` + `AppInfoCommands`. Tests use `JTKitTestSupport` (`MockServer`).
 
@@ -36,7 +37,7 @@ Extend JTKit instead of adding another copy. If another app needs one of the `Lo
 
 ## Saving: rules
 
-- **Only the edited payload may change.** The Blueprints API applies PATCH as a JSON merge-patch, which replaces arrays wholesale, so every save sends the complete `steps` array and nothing else. Everything except the edited Managed Preferences goes back byte for byte (`LosslessJSON` keeps key order and number text). Never reformat, re-sort or "clean up" JSON. The test `savingOneEditedPayloadSendsEverythingElseBackByteForByte` guards this; keep it passing.
+- **Only the edited payload may change.** The Blueprints API applies PATCH as a JSON merge-patch, which replaces arrays wholesale, so every save sends the complete `steps` array and nothing else. Everything except the edited Managed Preferences goes back byte for byte (`LosslessJSON` keeps key order and number text). Never reformat, re-sort or "clean up" JSON. The tests `savingOneEditedPayloadSendsEverythingElseBackByteForByte` (mock server) and `…InDemoMode` (JTKit's demo server) guard this; keep both passing.
 - **Save:** fetch again, check the Blueprint is unchanged since it was loaded (`updated`), back up, PATCH steps, reload. If it changed on the server, save nothing and warn.
 - **Restore:** the same check, then a fresh backup of the current state, then PATCH the backup's steps.
 - **A backup is written before every save and every restore.** Backups are never overwritten: write with `.withoutOverwriting` only (Foundation on macOS 27 traps when it is combined with `.atomic`). The Restore list sorts names numerically without ".json", so same-millisecond "-2" … "-10" backups list in order.
@@ -56,7 +57,7 @@ Extend JTKit instead of adding another copy. If another app needs one of the `Lo
 
 ## Testing
 
-- **Unit tests** (Swift Testing, `Blueprint Managed Preferences EditorTests`): scheme `Blueprint Managed Preferences Editor`, ⌘U. No real network: JTKit's `MockServer`. Suites cover the allow-list and client, saving (byte-for-byte, conflict, division lock, permission message), the locator, the plist model and import/export, backups (on a temporary folder), saved connections and About.
+- **Unit tests** (Swift Testing, `Blueprint Managed Preferences EditorTests`): scheme `Blueprint Managed Preferences Editor`, ⌘U. No real network: JTKit's `MockServer`. Suites cover the allow-list and client, saving (byte-for-byte, conflict, division lock, permission message), the locator, the plist model and import/export, backups (on a temporary folder), saved connections, About and demo mode (`DemoModeTests`: saving, restore and deploy on the demo server, nothing saved read, Test Connection real, the picker, the unsaved-edits question, sample data clearly fake).
 - There is no UI test target yet.
 - **Release check:** `Scripts/release-check.sh` comes with ROADMAP step 11 (not in this repo yet): own-project build against the published JTKit, unit tests, UI smoke tests in demo mode, and required live checks against sandbox tenants. Tenants come only from the local allow-list outside git. Never name a tenant in this repo.
 

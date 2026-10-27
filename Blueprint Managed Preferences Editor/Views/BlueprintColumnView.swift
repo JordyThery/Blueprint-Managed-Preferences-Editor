@@ -222,8 +222,8 @@ private struct EditorColumn: View {
                 Button("Restore from Backup…") { isRestoring = true }
                     .disabled(editor.isReadOnly)
                 Button("Show Backups in Finder") {
-                    let directory = BackupStore.directory(for: editor.blueprintID)
-                    let url = FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)) ? directory : BackupStore.rootURL
+                    let directory = BackupStore.directory(for: editor.blueprintID, root: editor.backupRoot)
+                    let url = FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)) ? directory : editor.backupRoot
                     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }

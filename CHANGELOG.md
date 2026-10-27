@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Demo Mode**: try the app without a Jamf tenant. Turn it on in the connection picker or the Connection menu, or with **Try Demo Mode** when no connection is set up. The picker reads "Contoso (Demo)" and every window title ends in "— Demo". Sample Contoso Blueprints with Managed Preferences (Microsoft AutoUpdate with Forced, Set-Once and Often settings, Outlook, Chrome with nested settings and a list, a helpdesk app) can be edited, saved, deployed and restored inside the app; nothing is sent to a tenant, and everything resets when the app quits. Backups made in demo mode go to a temporary folder, never your real Backups folder. Saved connections and Keychain items are never touched, and Test Connection in Settings always uses the real connection. With unsaved edits, turning Demo Mode on or off asks first.
+- The Restore list and **Show Backups in Finder** use the same backup folder as saving.
 - About now comes from JTKit, shared with Jordy's other apps: a window with the version, a short description and a link to the GitHub repository, replacing the standard About panel. It opens only from the app menu and is not listed in the Window menu.
 - **Settings › Updates** now holds only the "Check for updates daily" switch; your choice is kept. **Check for Updates…** stays in the app menu, and brings the main window back if it was closed.
 

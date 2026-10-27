@@ -2,32 +2,36 @@ import JTKit
 import SwiftUI
 
 @main struct MyApp: App {
-    @State private var model = AppModel()
+    @State private var model = AppModel.forLaunch()
 
     var body: some Scene {
         Window("Blueprint Managed Preferences Editor", id: WindowID.main) {
             ContentView()
                 .environment(model)
                 .environment(model.updates)
-                .task { await model.updates.checkAutomatically() }
+                .task { if !model.demo.isSandbox { await model.updates.checkAutomatically() } }
         }
+        .environment(model.demo)
         .commands {
             AppCommands(model: model)
         }
 
         AboutWindow(configuration: .blueprintManagedPreferencesEditor)
+            .environment(model.demo)
 
         // JTKit's shared activity log (Window › Activity Log, ⇧⌘L).
         ActivityLogWindow(
             log: model.activityLog,
             emptyDescription: "Sign-ins, Jamf API calls and retries appear here as they happen."
         )
+        .environment(model.demo)
 
         // JTKit's Settings window: General (Appearance), Connections, Updates.
         SettingsWindow(updates: model.updates, opensTabsByName: true) {
             ConnectionsTab()
                 .environment(model)
         }
+        .environment(model.demo)
     }
 }
 
@@ -53,7 +57,9 @@ private struct AppCommands: Commands {
                 openWindow(id: WindowID.main)
             },
             itemTitle: \.menuTitle
-        )
+        ) {
+            DemoModeToggle(demo: model.demo) { openWindow(id: WindowID.main) }
+        }
         CommandGroup(after: .toolbar) {
             Button("Refresh Blueprints") { model.refresh() }
                 .keyboardShortcut("r", modifiers: .command)
