@@ -147,6 +147,39 @@ final class SaveTests {
         #expect(!edited.modifySettings("Edit", domainID: domain.id, entryID: entry.id) { $0.removeAll() })
     }
 
+    /// Deploy… is blocked on a division-locked Blueprint, like Save.
+    @Test func aDivisionLockedBlueprintCannotBeDeployed() async throws {
+        let locked = emailBlueprintJSON.replacingOccurrences(of: #""scope":"#, with: #""divisionId":"d-1","scope":"#)
+        let server = MockServer { _ in Issue.record("No request may be sent"); return .json(500, "{}") }
+        let (app, editor) = try makeApp(server, json: locked)
+        let edited = try #require(editor)
+        #expect(!edited.canDeploy)
+
+        await edited.deploy()
+
+        #expect(server.requests.isEmpty)
+        #expect(edited.alert == nil)
+        withExtendedLifetime(app) {} // the editor holds the app unowned
+    }
+
+    /// Deploy… waits until the edits are saved: a deploy reloads the
+    /// Blueprint, which would throw them away.
+    @Test func unsavedEditsBlockDeployAndAreKept() async throws {
+        let server = MockServer { _ in Issue.record("No request may be sent"); return .json(500, "{}") }
+        let (app, editor) = try makeApp(server)
+        let edited = try #require(editor)
+        #expect(edited.canDeploy)
+        try editFirstPayload(edited)
+        #expect(!edited.canDeploy)
+
+        await edited.deploy()
+
+        #expect(server.requests.isEmpty)
+        #expect(edited.isDirty, "The edits are kept")
+        #expect(edited.document.hasChanges)
+        withExtendedLifetime(app) {} // the editor holds the app unowned
+    }
+
     /// Test Connection names a missing read permission.
     @Test func testConnectionNamesAMissingReadPermission() async throws {
         let server = MockServer { request in

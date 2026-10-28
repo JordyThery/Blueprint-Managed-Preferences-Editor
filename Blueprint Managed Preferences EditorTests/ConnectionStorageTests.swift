@@ -117,13 +117,38 @@ final class ConnectionStorageTests {
         #expect(ProfileStore.keychain.label == "Blueprint Managed Preferences Editor client secret")
     }
 
-    @Test func theFirstNewProfileBecomesActive() throws {
+    /// + saves a blank "New Connection" straight away (JTKit's Connections
+    /// tab); it becomes active only once it's saved complete, so Revert or
+    /// leaving it blank keeps the selection as it was.
+    @Test func aNewProfileBecomesActiveOnlyOnceSavedComplete() throws {
         let store = ProfileStore(defaults: defaults, secrets: secrets)
-        let profile = store.newProfile()
+        var profile = store.newProfile()
         try store.connections.save(profile)
+        store.profilesDidChange()
+        #expect(store.selectedProfileID == nil)
+        #expect(defaults.string(forKey: "selectedConnectionProfileID") == nil)
+
+        profile.environmentID = "5f1e2d3c-4b5a-4968-8776-655443322110"
+        profile.clientID = "client-1"
+        try store.connections.save(profile, secrets: [.main: "s3cr3t"])
+        store.profilesDidChange()
 
         #expect(store.selectedProfile == profile)
         #expect(defaults.string(forKey: "selectedConnectionProfileID") == profile.id.uuidString)
+    }
+
+    @Test func aNewProfileLeavesTheActiveOneAsItWas() throws {
+        try saveTheOldWay(oldProfiles)
+        let store = ProfileStore(defaults: defaults, secrets: secrets)
+        store.selectedProfileID = second
+        var profile = store.newProfile()
+        try store.connections.save(profile)
+        profile.environmentID = "5f1e2d3c-4b5a-4968-8776-655443322110"
+        profile.clientID = "client-1"
+        try store.connections.save(profile, secrets: [.main: "s3cr3t"])
+        store.profilesDidChange()
+
+        #expect(store.selectedProfileID == second)
     }
 
     @Test func deletingTheActiveProfileMakesTheFirstRemainingOneActive() throws {

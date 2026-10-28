@@ -21,6 +21,7 @@ struct ConnectionsTab: View {
             environments: { profile, typed in try await model.environments(for: profile, typedSecret: typed[.main]) }
         )
         .confirmsConnectionSwitch(from: .settings)
+        .onChange(of: store.profiles) { store.profilesDidChange() }
     }
 }
 

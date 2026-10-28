@@ -6,6 +6,9 @@
 - The Restore list and **Show Backups in Finder** use the same backup folder as saving.
 - About now comes from JTKit, shared with Jordy's other apps: a window with the version, a short description and a link to the GitHub repository, replacing the standard About panel. It opens only from the app menu and is not listed in the Window menu.
 - **Settings › Updates** now holds only the "Check for updates daily" switch; your choice is kept. **Check for Updates…** stays in the app menu, and brings the main window back if it was closed.
+- Fixed: **Deploy…** could throw away unsaved edits. It is now unavailable until the edits are saved, and the "Unsaved changes" note says to save first (**Save & Deploy…** in the review still does both).
+- Fixed: **Deploy…** was available on a Blueprint assigned to a division, which can't be changed through the API. It is now blocked there, like Save.
+- Fixed: a new connection made with **+** in Settings › Connections became the active one before it was saved. It now becomes active only once it's saved with its Environment ID and client ID, and only when no other connection is active; reverting or leaving it blank keeps the selection as it was.
 
 ## 1.0.2
 
