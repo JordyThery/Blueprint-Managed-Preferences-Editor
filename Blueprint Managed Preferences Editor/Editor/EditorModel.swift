@@ -69,6 +69,10 @@ final class EditorModel {
     var backupRoot: URL { app.backupRoot }
     var isBusy: Bool { operation != .idle }
     var canEdit: Bool { !isReadOnly && !isBusy }
+    /// Deploy… needs the edits saved first (a deploy reloads the Blueprint,
+    /// which would discard them) and, like Save, a Blueprint not assigned to
+    /// a division.
+    var canDeploy: Bool { canEdit && !isDirty }
 
     // MARK: Undoable mutations
 
@@ -290,9 +294,10 @@ final class EditorModel {
         }
     }
 
-    /// Deploys the saved blueprint (unsaved edits are not included).
+    /// Deploys the saved blueprint. Only without unsaved edits and not on a
+    /// read-only Blueprint (see `canDeploy`).
     func deploy() async {
-        guard !isBusy else { return }
+        guard canDeploy else { return }
         operation = .deploying
         defer { operation = .idle }
         do {

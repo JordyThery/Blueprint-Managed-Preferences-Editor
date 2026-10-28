@@ -64,7 +64,8 @@ final class DemoSmokeUITests: JTKitUITestCase {
         let value = row.popUpButtons.matching(NSPredicate(format: "value == 'false'")).firstMatch
         tap(value, timeout: 10)
         tap(app.menuItems["true"].firstMatch, timeout: 5)
-        XCTAssertTrue(text("Unsaved changes", in: app).waitForExistence(timeout: 10), "The edit didn't make the Blueprint dirty")
+        XCTAssertTrue(text("Unsaved changes · save before deploying", in: app).waitForExistence(timeout: 10), "The edit didn't make the Blueprint dirty")
+        XCTAssertFalse(app.buttons["Deploy…"].firstMatch.isEnabled, "Deploy… is enabled with unsaved edits")
 
         tap(app.buttons["Save…"].firstMatch, timeout: 10)
         let sheet = app.sheets.firstMatch
@@ -78,6 +79,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
         XCTAssertTrue(saved.waitForExistence(timeout: 20), "The save didn't finish with “Saved”")
         tap(dialogButton("OK"))
         XCTAssertFalse(app.buttons["Save…"].firstMatch.isEnabled, "Save is still enabled after saving")
+        XCTAssertTrue(app.buttons["Deploy…"].firstMatch.isEnabled, "Deploy… is still disabled after saving")
     }
 
     func test6ActivityLog() {

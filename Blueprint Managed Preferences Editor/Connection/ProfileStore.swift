@@ -60,11 +60,19 @@ final class ProfileStore {
         connections.record(id: id)
     }
 
-    /// A new profile for + in Settings › Connections. The first one becomes active.
+    /// A new profile for + in Settings › Connections. It doesn't change the
+    /// active profile: it becomes active only once it's saved complete (see
+    /// `profilesDidChange()`), so Revert leaves the selection as it was.
     func newProfile() -> ConnectionProfile {
-        let profile = ConnectionProfile.newProfile()
-        if selectedProfile == nil { selectedProfileID = profile.id }
-        return profile
+        ConnectionProfile.newProfile()
+    }
+
+    /// After the saved profiles changed in Settings: when no profile is
+    /// active, the first complete one (Environment ID and client ID filled
+    /// in and saved) becomes active.
+    func profilesDidChange() {
+        guard selectedProfile == nil, let complete = profiles.first(where: \.isComplete) else { return }
+        selectedProfileID = complete.id
     }
 
     /// After a profile was deleted in Settings: when it was the active one, the

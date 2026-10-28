@@ -130,9 +130,13 @@ private struct EditorColumn: View {
     }
 
     private var deployMessage: String {
-        var text = "This deploys the saved blueprint to its scope.\n\n\(editor.base.scopeDescription)"
-        if editor.isDirty { text += "\n\nYou have unsaved changes. They are NOT included; save first to deploy them." }
-        return text
+        "This deploys the saved blueprint to its scope.\n\n\(editor.base.scopeDescription)"
+    }
+
+    private var deployHelp: String {
+        if editor.isReadOnly { return "This blueprint is assigned to a division and can't be deployed through the API" }
+        if editor.isDirty { return "Save your changes first; Save & Deploy in the review does both" }
+        return "Deploy the saved blueprint"
     }
 
     @ViewBuilder
@@ -147,7 +151,7 @@ private struct EditorColumn: View {
                 Text(editor.operation.label).font(.caption)
             }
         } else if editor.isDirty {
-            Label("Unsaved changes", systemImage: "pencil.circle.fill")
+            Label("Unsaved changes · save before deploying", systemImage: "pencil.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.tint)
         }
@@ -237,8 +241,8 @@ private struct EditorColumn: View {
             Spacer()
 
             Button("Deploy…") { isConfirmingDeploy = true }
-                .disabled(editor.isBusy)
-                .help("Deploy the saved blueprint")
+                .disabled(!editor.canDeploy)
+                .help(deployHelp)
             Button("Save…") { isReviewing = true }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("s", modifiers: .command)
