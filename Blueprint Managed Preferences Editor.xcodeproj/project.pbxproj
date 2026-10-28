@@ -7,11 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		080F49D73091D11E003E0885 /* JTKitLiveCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 080F49D63091D11E003E0885 /* JTKitLiveCheck */; };
+		080F49E63091D216003E0885 /* JTKitUITestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 080F49E53091D216003E0885 /* JTKitUITestSupport */; };
 		087B3017308E3A4700D0CB8A /* JTKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000002 /* JTKit */; };
 		087B402C308E920300D0CB8A /* JTKitTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 087B402B308E920300D0CB8A /* JTKitTestSupport */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		080F49E03091D212003E0885 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000100000000;
+			remoteInfo = "Blueprint Managed Preferences Editor";
+		};
 		08E3E64830766C1F001F3321 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 000000000000000000000000 /* Project object */;
@@ -23,6 +32,7 @@
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Blueprint Managed Preferences Editor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Blueprint Managed Preferences Editor.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		080F49DC3091D212003E0885 /* Blueprint Managed Preferences EditorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Blueprint Managed Preferences EditorUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		08E3E63E30766C1F001F3321 /* Blueprint Managed Preferences EditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Blueprint Managed Preferences EditorTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -30,6 +40,16 @@
 		000000000000000000000010 /* Blueprint Managed Preferences Editor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Blueprint Managed Preferences Editor";
+			sourceTree = "<group>";
+		};
+		080F49CC3091D0F4003E0885 /* Blueprint Managed Preferences EditorUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Blueprint Managed Preferences EditorUITests";
+			sourceTree = "<group>";
+		};
+		080F49DD3091D212003E0885 /* Blueprint Managed Preferences EditorUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Blueprint Managed Preferences EditorUITests";
 			sourceTree = "<group>";
 		};
 		08E3E63F30766C1F001F3321 /* Blueprint Managed Preferences EditorTests */ = {
@@ -46,9 +66,16 @@
 				087B3017308E3A4700D0CB8A /* JTKit in Frameworks */,
 			);
 		};
+		080F49D93091D212003E0885 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				080F49E63091D216003E0885 /* JTKitUITestSupport in Frameworks */,
+			);
+		};
 		08E3E63B30766C1F001F3321 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				080F49D73091D11E003E0885 /* JTKitLiveCheck in Frameworks */,
 				087B402C308E920300D0CB8A /* JTKitTestSupport in Frameworks */,
 			);
 		};
@@ -60,6 +87,8 @@
 			children = (
 				000000000000000000000010 /* Blueprint Managed Preferences Editor */,
 				08E3E63F30766C1F001F3321 /* Blueprint Managed Preferences EditorTests */,
+				080F49CC3091D0F4003E0885 /* Blueprint Managed Preferences EditorUITests */,
+				080F49DD3091D212003E0885 /* Blueprint Managed Preferences EditorUITests */,
 				087B402A308E920300D0CB8A /* Frameworks */,
 				000000000000000000000020 /* Products */,
 			);
@@ -70,6 +99,7 @@
 			children = (
 				000000000000000000000120 /* Blueprint Managed Preferences Editor.app */,
 				08E3E63E30766C1F001F3321 /* Blueprint Managed Preferences EditorTests.xctest */,
+				080F49DC3091D212003E0885 /* Blueprint Managed Preferences EditorUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -105,6 +135,30 @@
 			productReference = 000000000000000000000120 /* Blueprint Managed Preferences Editor.app */;
 			productType = "com.apple.product-type.application";
 		};
+		080F49DB3091D212003E0885 /* Blueprint Managed Preferences EditorUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 080F49E23091D212003E0885 /* Build configuration list for PBXNativeTarget "Blueprint Managed Preferences EditorUITests" */;
+			buildPhases = (
+				080F49D83091D212003E0885 /* Sources */,
+				080F49D93091D212003E0885 /* Frameworks */,
+				080F49DA3091D212003E0885 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				080F49E13091D212003E0885 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				080F49DD3091D212003E0885 /* Blueprint Managed Preferences EditorUITests */,
+			);
+			name = "Blueprint Managed Preferences EditorUITests";
+			packageProductDependencies = (
+				080F49E53091D216003E0885 /* JTKitUITestSupport */,
+			);
+			productName = "Blueprint Managed Preferences EditorUITests";
+			productReference = 080F49DC3091D212003E0885 /* Blueprint Managed Preferences EditorUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		08E3E63D30766C1F001F3321 /* Blueprint Managed Preferences EditorTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 08E3E64230766C1F001F3321 /* Build configuration list for PBXNativeTarget "Blueprint Managed Preferences EditorTests" */;
@@ -124,6 +178,7 @@
 			name = "Blueprint Managed Preferences EditorTests";
 			packageProductDependencies = (
 				087B402B308E920300D0CB8A /* JTKitTestSupport */,
+				080F49D63091D11E003E0885 /* JTKitLiveCheck */,
 			);
 			productName = "Blueprint Managed Preferences EditorTests";
 			productReference = 08E3E63E30766C1F001F3321 /* Blueprint Managed Preferences EditorTests.xctest */;
@@ -136,11 +191,15 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2700;
+				LastSwiftUpdateCheck = 2710;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					000000000000000100000000 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					080F49DB3091D212003E0885 = {
+						CreatedOnToolsVersion = 27.1;
+						TestTargetID = 000000000000000100000000;
 					};
 					08E3E63D30766C1F001F3321 = {
 						CreatedOnToolsVersion = 27.0;
@@ -166,12 +225,18 @@
 			targets = (
 				000000000000000100000000 /* Blueprint Managed Preferences Editor */,
 				08E3E63D30766C1F001F3321 /* Blueprint Managed Preferences EditorTests */,
+				080F49DB3091D212003E0885 /* Blueprint Managed Preferences EditorUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		080F49DA3091D212003E0885 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -189,6 +254,11 @@
 			files = (
 			);
 		};
+		080F49D83091D212003E0885 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		08E3E63A30766C1F001F3321 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -197,6 +267,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		080F49E13091D212003E0885 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000100000000 /* Blueprint Managed Preferences Editor */;
+			targetProxy = 080F49E03091D212003E0885 /* PBXContainerItemProxy */;
+		};
 		08E3E64930766C1F001F3321 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 000000000000000100000000 /* Blueprint Managed Preferences Editor */;
@@ -423,6 +498,48 @@
 			};
 			name = Release;
 		};
+		080F49E33091D212003E0885 /* Debug configuration for PBXNativeTarget "Blueprint Managed Preferences EditorUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "be.jordythery.Blueprint-Managed-Preferences-EditorUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "Blueprint Managed Preferences Editor";
+			};
+			name = Debug;
+		};
+		080F49E43091D212003E0885 /* Release configuration for PBXNativeTarget "Blueprint Managed Preferences EditorUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "be.jordythery.Blueprint-Managed-Preferences-EditorUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = "Blueprint Managed Preferences Editor";
+			};
+			name = Release;
+		};
 		08E3E64330766C1F001F3321 /* Debug configuration for PBXNativeTarget "Blueprint Managed Preferences EditorTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -492,6 +609,14 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		080F49E23091D212003E0885 /* Build configuration list for PBXNativeTarget "Blueprint Managed Preferences EditorUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				080F49E33091D212003E0885 /* Debug configuration for PBXNativeTarget "Blueprint Managed Preferences EditorUITests" */,
+				080F49E43091D212003E0885 /* Release configuration for PBXNativeTarget "Blueprint Managed Preferences EditorUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		08E3E64230766C1F001F3321 /* Build configuration list for PBXNativeTarget "Blueprint Managed Preferences EditorTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -508,12 +633,22 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.11.7;
+				minimumVersion = 0.12.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		080F49D63091D11E003E0885 /* JTKitLiveCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
+			productName = JTKitLiveCheck;
+		};
+		080F49E53091D216003E0885 /* JTKitUITestSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
+			productName = JTKitUITestSupport;
+		};
 		087B402B308E920300D0CB8A /* JTKitTestSupport */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0A0000000000000000000001 /* XCRemoteSwiftPackageReference "JTKit" */;
