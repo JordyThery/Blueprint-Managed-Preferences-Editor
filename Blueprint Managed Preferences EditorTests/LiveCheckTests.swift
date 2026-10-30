@@ -86,7 +86,13 @@ struct LiveTenant: Sendable {
         let path = resource == "blueprints"
             ? "\(JamfPlatform.Blueprints.path)/\(JamfPlatform.pathSegment(id))"
             : "\(JamfPlatform.Client.deviceGroupsPath)/\(JamfPlatform.pathSegment(id))"
-        _ = try await api.send(HTTPRequest(method: "DELETE", path: path, safeToRepeat: true))
+        do {
+            _ = try await api.send(HTTPRequest(method: "DELETE", path: path, safeToRepeat: true))
+        } catch let error as JamfPlatformError where error.status == 404 {
+            // Not counted from the answer: JTKit's read-back (0.12.6) marks it
+            // removed only once the object is gone (Jamf answered 404 for a
+            // group it still listed, 2026-10-30); a leftover fails the run.
+        }
     }
 
     /// Deletes a test group once no Blueprint uses it any more. Jamf removes a
