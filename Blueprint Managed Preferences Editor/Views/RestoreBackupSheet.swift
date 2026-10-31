@@ -2,7 +2,7 @@ import AppKit
 import JTKit
 import SwiftUI
 
-/// Lists local backups of a blueprint and PATCHes the chosen backup's steps back.
+/// Lists local backups of a Blueprint and PATCHes the chosen backup's steps back.
 struct RestoreBackupSheet: View {
     let editor: EditorModel
     @Environment(\.dismiss) private var dismiss
@@ -18,7 +18,7 @@ struct RestoreBackupSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Restore from Backup").font(.title3.weight(.semibold))
-                Text("A backup is written before every save. Restoring sends the backup's steps with PATCH; the current server state is backed up first.")
+                Text("A backup is written before every save and restore. Restoring puts the backup’s steps back on the server; the current state is backed up first.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -82,7 +82,7 @@ struct RestoreBackupSheet: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The blueprint's steps are replaced with those from \(selectedBackup?.date.formatted(date: .abbreviated, time: .standard) ?? "the backup"). Deploy afterwards to apply them to devices.")
+            Text("The Blueprint’s steps are replaced with those from \(selectedBackup?.date.formatted(date: .abbreviated, time: .standard) ?? "the backup"). Deploy afterwards to apply them to devices.")
         }
     }
 }

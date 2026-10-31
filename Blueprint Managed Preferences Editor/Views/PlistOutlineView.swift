@@ -14,7 +14,7 @@ struct PlistOutlineView: View {
         var duplicate: () -> Void
     }
 
-    /// A display row. Array elements are labelled "Item n" instead of a key.
+    /// A display row. Array elements are labeled "Item n" instead of a key.
     struct Row: Identifiable {
         let node: PlistNode
         let arrayIndex: Int?
@@ -125,7 +125,7 @@ private struct ValueCell: View {
         case .null:
             Text("null")
                 .foregroundStyle(.secondary)
-                .help("A JSON null. Change the type to edit it.")
+                .help("A JSON null; change the type to edit it")
         case .string, .integer, .real, .date, .data:
             if let type = value.type {
                 CommitTextField(

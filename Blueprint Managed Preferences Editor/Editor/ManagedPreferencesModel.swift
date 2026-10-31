@@ -114,7 +114,7 @@ nonisolated struct PreferenceDomain: Identifiable, Hashable, Sendable {
 
 /// An editable `com.apple.ManagedClient.preferences` payloadContent item.
 nonisolated struct ManagedPreferencesPayload: Identifiable, Hashable, Sendable {
-    /// Absolute path from the blueprint root to the payloadContent item.
+    /// Absolute path from the Blueprint root to the payloadContent item.
     let path: [LosslessJSON.PathComponent]
     /// The item as loaded; every key except `PayloadContent` is written back unchanged.
     let item: LosslessJSON.Object
@@ -136,7 +136,12 @@ nonisolated struct ManagedPreferencesPayload: Identifiable, Hashable, Sendable {
             ?? "Managed Preferences"
         if let content = location.payload[Self.contentKey]?.objectValue {
             domains = content.members.map { PreferenceDomain(name: $0.key, json: $0.value) }
-            problem = nil
+            // Save sends only the steps array, so a payload elsewhere could never be saved.
+            if case .key("steps") = location.path.first {
+                problem = nil
+            } else {
+                problem = "Found outside the steps array, so it can’t be saved; shown read-only."
+            }
         } else {
             domains = []
             problem = location.shapeWarnings.first ?? "PayloadContent is missing or not an object."
@@ -162,7 +167,7 @@ nonisolated struct BlueprintEditDocument: Sendable {
         payloads = detail.managedPreferencePayloads.map(ManagedPreferencesPayload.init(location:))
     }
 
-    /// The blueprint JSON with each editable payload replaced at its path.
+    /// The Blueprint JSON with each editable payload replaced at its path.
     var updatedBlueprintJSON: LosslessJSON {
         var json = base.json
         for payload in payloads where payload.isEditable {
@@ -256,31 +261,52 @@ nonisolated struct PreferenceChange: Identifiable, Hashable, Sendable {
 
     var id: String { "\(payloadID)|\(domain)|\(keyPath)" }
 
+    /// Compares domain by domain. A name used twice is compared as its own
+    /// domain ("name (2)"), and a change of order alone is listed too, so the
+    /// review shows a change whenever Save would send one.
     static func diff(old: LosslessJSON.Object, new: LosslessJSON.Object, payloadName: String, payloadID: String) -> [PreferenceChange] {
         var result: [PreferenceChange] = []
-        let domainNames = orderedUnion(old.keys, new.keys)
-        for domain in domainNames {
-            let oldLeaves = flatten(old[domain])
-            let newLeaves = flatten(new[domain])
+        func change(_ domain: String, _ keyPath: String, _ kind: Kind, _ before: LosslessJSON?, _ after: LosslessJSON?) -> PreferenceChange {
+            PreferenceChange(payloadName: payloadName, payloadID: payloadID, domain: domain, keyPath: keyPath, kind: kind,
+                             oldValue: before?.serializedString(), newValue: after?.serializedString())
+        }
+        let oldDomains = labeledMembers(old)
+        let newDomains = labeledMembers(new)
+        let oldByName = Dictionary(oldDomains, uniquingKeysWith: { first, _ in first })
+        let newByName = Dictionary(newDomains, uniquingKeysWith: { first, _ in first })
+        for domain in orderedUnion(oldDomains.map(\.0), newDomains.map(\.0)) {
+            let oldLeaves = flatten(oldByName[domain])
+            let newLeaves = flatten(newByName[domain])
             let oldMap = Dictionary(oldLeaves.map { ($0.path, $0.value) }, uniquingKeysWith: { first, _ in first })
             let newMap = Dictionary(newLeaves.map { ($0.path, $0.value) }, uniquingKeysWith: { first, _ in first })
+            let countBefore = result.count
             for path in orderedUnion(oldLeaves.map(\.path), newLeaves.map(\.path)) {
                 let before = oldMap[path]
                 let after = newMap[path]
                 guard before != after else { continue }
                 let kind: Kind = before == nil ? .added : (after == nil ? .removed : .changed)
-                result.append(PreferenceChange(
-                    payloadName: payloadName,
-                    payloadID: payloadID,
-                    domain: domain,
-                    keyPath: path.isEmpty ? "(domain)" : path,
-                    kind: kind,
-                    oldValue: before?.serializedString(),
-                    newValue: after?.serializedString()
-                ))
+                result.append(change(domain, path.isEmpty ? "(domain)" : path, kind, before, after))
+            }
+            // Same keys and values in another order (or an empty domain added or removed).
+            if result.count == countBefore, oldByName[domain] != newByName[domain] {
+                let kind: Kind = oldByName[domain] == nil ? .added : (newByName[domain] == nil ? .removed : .changed)
+                result.append(change(domain, kind == .changed ? "(order of keys)" : "(domain)", kind, nil, nil))
             }
         }
+        if result.isEmpty, old != new {
+            result.append(change("(all domains)", "(order of domains)", .changed, nil, nil))
+        }
         return result
+    }
+
+    /// The members of `object`, with a repeated name labeled "name (2)", "name (3)".
+    private static func labeledMembers(_ object: LosslessJSON.Object) -> [(String, LosslessJSON)] {
+        var seen: [String: Int] = [:]
+        return object.members.map { member in
+            seen[member.key, default: 0] += 1
+            let count = seen[member.key] ?? 1
+            return (count == 1 ? member.key : "\(member.key) (\(count))", member.value)
+        }
     }
 
     /// Flattens to leaf values keyed by a readable path. The `mcx_preference_settings`

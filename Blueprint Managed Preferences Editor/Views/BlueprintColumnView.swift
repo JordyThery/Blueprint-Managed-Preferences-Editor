@@ -3,7 +3,10 @@ import JTKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Middle column: the domains of the selected blueprint and its save/deploy actions.
+/// The division sentence, as JTKit's error hint words it.
+let divisionLockedText = "This Blueprint is assigned to a division and can’t be changed through the API."
+
+/// Middle column: the domains of the selected Blueprint and its save/deploy actions.
 struct BlueprintColumnView: View {
     let blueprintID: String
     @Environment(AppModel.self) private var model
@@ -17,7 +20,7 @@ struct BlueprintColumnView: View {
                 ContentUnavailableView(
                     "No Managed Preferences",
                     systemImage: "doc.questionmark",
-                    description: Text("This blueprint has no \(ManagedPreferencesLocator.payloadType) payload. Its raw JSON is shown on the right.")
+                    description: Text("This Blueprint has no Managed Preferences payload (\(ManagedPreferencesLocator.payloadType)). Its raw JSON is shown on the right.")
                 )
             }
             .padding()
@@ -42,12 +45,20 @@ private struct EditorColumn: View {
     @State private var isRestoring = false
     @State private var isConfirmingDeploy = false
     @State private var isConfirmingDiscard = false
-    @State private var importMessage: String?
+    @State private var isConfirmingReload = false
+    @State private var importSummary: ImportSummary?
+
+    struct ImportSummary {
+        let title: String
+        let message: String
+    }
 
     /// Add or rename a domain.
     struct NamePrompt: Identifiable {
         let id = UUID()
         let title: String
+        /// The sheet's default button, e.g. "Add" or "Rename".
+        let actionTitle: String
         let initial: String
         let domainID: PreferenceDomain.ID?
     }
@@ -70,9 +81,10 @@ private struct EditorColumn: View {
         .sheet(item: $namePrompt) { prompt in
             NameSheet(
                 title: prompt.title,
+                actionTitle: prompt.actionTitle,
                 initial: prompt.initial,
                 validate: { name in
-                    editor.validateDomainName(name, inPayloadOf: prompt.domainID ?? selectedDomainID)
+                    editor.validateDomainName(name, renaming: prompt.domainID, near: selectedDomainID)
                 },
                 commit: { name in
                     if let id = prompt.domainID {
@@ -102,25 +114,35 @@ private struct EditorColumn: View {
         .confirmationDialog("Discard all unsaved changes?", isPresented: $isConfirmingDiscard) {
             Button("Discard Changes", role: .destructive) { editor.discardChanges() }
         }
+        .confirmationDialog("Reload and discard unsaved changes?", isPresented: $isConfirmingReload) {
+            Button("Discard and Reload", role: .destructive) { Task { await editor.reload(discardingEdits: true) } }
+        }
         .alert(
             editor.alert?.title ?? "",
             isPresented: Binding(get: { editor.alert != nil }, set: { if !$0 { editor.alert = nil } }),
             presenting: editor.alert
         ) { alert in
             switch alert.kind {
-            case .conflict:
-                Button("Reload and Discard Edits", role: .destructive) { Task { await editor.reload() } }
+            case .conflict where editor.isDirty:
+                Button("Reload and Discard Edits", role: .destructive) { Task { await editor.reload(discardingEdits: true) } }
                 Button("Keep Editing", role: .cancel) {}
+            case .conflict:
+                Button("Reload") { Task { await editor.reload() } }
+                Button("Cancel", role: .cancel) {}
             case .info, .error:
                 Button("OK") {}
             }
         } message: { alert in
             Text(alert.message)
         }
-        .alert("Import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
+        .alert(
+            importSummary?.title ?? "",
+            isPresented: Binding(get: { importSummary != nil }, set: { if !$0 { importSummary = nil } }),
+            presenting: importSummary
+        ) { _ in
             Button("OK") {}
-        } message: {
-            Text(importMessage ?? "")
+        } message: { summary in
+            Text(summary.message)
         }
     }
 
@@ -130,19 +152,19 @@ private struct EditorColumn: View {
     }
 
     private var deployMessage: String {
-        "This deploys the saved blueprint to its scope.\n\n\(editor.base.scopeDescription)"
+        "This deploys the saved Blueprint to its scope. If it changed on the server since it was loaded, nothing is deployed.\n\n\(editor.base.scopeDescription)"
     }
 
     private var deployHelp: String {
-        if editor.isReadOnly { return "This blueprint is assigned to a division and can't be deployed through the API" }
+        if editor.isReadOnly { return divisionLockedText }
         if editor.isDirty { return "Save your changes first; Save & Deploy in the review does both" }
-        return "Deploy the saved blueprint"
+        return "Deploy the saved Blueprint"
     }
 
     @ViewBuilder
     private var statusBanner: some View {
         if editor.isReadOnly {
-            Label("Read-only: this blueprint is assigned to a division and can't be changed through the API.", systemImage: "lock.fill")
+            Label(divisionLockedText, systemImage: "lock.fill")
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if editor.isBusy {
@@ -171,7 +193,7 @@ private struct EditorColumn: View {
                             .tag(EditorSelection.domain(domain.id))
                             .contextMenu {
                                 Button("Rename…") {
-                                    namePrompt = NamePrompt(title: "Rename Domain", initial: domain.name, domainID: domain.id)
+                                    namePrompt = NamePrompt(title: "Rename Domain", actionTitle: "Rename", initial: domain.name, domainID: domain.id)
                                 }
                                 .disabled(!editor.canEdit || !payload.isEditable)
                                 Button("Remove", role: .destructive) { editor.removeDomain(domain.id) }
@@ -196,13 +218,13 @@ private struct EditorColumn: View {
         HStack(spacing: 8) {
             Menu {
                 Button("New Domain…") {
-                    namePrompt = NamePrompt(title: "New Domain", initial: "com.example.preferences", domainID: nil)
+                    namePrompt = NamePrompt(title: "New Domain", actionTitle: "Add", initial: "com.example.preferences", domainID: nil)
                 }
                 Button("Import Domains from File…", action: importDomains)
                 Divider()
                 Button("Rename Selected Domain…") {
                     if let id = selectedDomainID, let domain = editor.domain(withID: id) {
-                        namePrompt = NamePrompt(title: "Rename Domain", initial: domain.name, domainID: id)
+                        namePrompt = NamePrompt(title: "Rename Domain", actionTitle: "Rename", initial: domain.name, domainID: id)
                     }
                 }
                 .disabled(selectedDomainID == nil)
@@ -211,7 +233,7 @@ private struct EditorColumn: View {
                 }
                 .disabled(selectedDomainID == nil)
             } label: {
-                Image(systemName: "plus")
+                Label("Domains", systemImage: "plus").labelStyle(.iconOnly)
             }
             .menuIndicator(.hidden)
             .fixedSize()
@@ -219,7 +241,9 @@ private struct EditorColumn: View {
             .disabled(!editor.canEdit)
 
             Menu {
-                Button("Reload from Server") { Task { await editor.reload() } }
+                Button("Reload from Server") {
+                    if editor.isDirty { isConfirmingReload = true } else { Task { await editor.reload() } }
+                }
                 Button("Discard Changes…") { isConfirmingDiscard = true }
                     .disabled(!editor.isDirty)
                 Divider()
@@ -232,10 +256,11 @@ private struct EditorColumn: View {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Label("More", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
             }
             .menuIndicator(.hidden)
             .fixedSize()
+            .help("Reload, discard changes, restore or show backups")
             .disabled(editor.isBusy)
 
             Spacer()
@@ -247,7 +272,7 @@ private struct EditorColumn: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!editor.isDirty || !editor.canEdit)
-                .help("Review changes, then save (PATCH) to Jamf")
+                .help("Review the changes, then save them to Jamf Pro")
         }
         .controlSize(.regular)
         .padding(10)
@@ -262,17 +287,13 @@ private struct EditorColumn: View {
         do {
             let imported = try PlistImporter.domains(from: Data(contentsOf: url), fileName: url.lastPathComponent)
             guard !imported.isEmpty else {
-                importMessage = "No preference domains were found in \(url.lastPathComponent)."
+                importSummary = ImportSummary(title: "Nothing Imported", message: "No preference domains were found in \(url.lastPathComponent).")
                 return
             }
-            let result = editor.importDomains(imported, near: selectedDomainID)
-            if result.added == 0 && result.replaced == 0 {
-                importMessage = "\(url.lastPathComponent) matches the current settings; nothing changed."
-            } else {
-                importMessage = "Imported from \(url.lastPathComponent): \(result.added) domain(s) added, \(result.replaced) replaced. Use Undo to revert."
-            }
+            let summary = editor.importDomains(imported, near: selectedDomainID).summary(fileName: url.lastPathComponent)
+            importSummary = ImportSummary(title: summary.title, message: summary.message)
         } catch {
-            importMessage = error.localizedDescription
+            importSummary = ImportSummary(title: "Import Failed", message: error.localizedDescription)
         }
     }
 }
@@ -300,7 +321,7 @@ private struct DomainRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Label("Unsupported shape", systemImage: "exclamationmark.triangle")
+                    Label("Unexpected shape", systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -313,6 +334,7 @@ private struct DomainRow: View {
 /// A small sheet asking for a name, with validation.
 struct NameSheet: View {
     let title: String
+    let actionTitle: String
     let initial: String
     let validate: (String) -> String?
     let commit: (String) -> Void
@@ -335,7 +357,7 @@ struct NameSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("OK", action: submit)
+                Button(actionTitle, action: submit)
                     .keyboardShortcut(.defaultAction)
                     .disabled(error != nil)
             }

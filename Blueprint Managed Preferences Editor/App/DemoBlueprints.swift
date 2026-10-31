@@ -7,9 +7,9 @@ import JTKit
 /// Often in Microsoft AutoUpdate; a second payload (Outlook) beside it; a
 /// nested dictionary and an array in Chrome; plain values in a helpdesk app.
 ///
-/// Written in the form the service stores them (payload UUID = identifier,
-/// version, organization and display name present), so they read back as
-/// from a tenant. IDs are in JTKit's fake range, addresses on
+/// Written in the form the service stores them (a real UUID as payload UUID
+/// and identifier; version, organization and display name present), so they
+/// read back as from a tenant. IDs are in JTKit's fake range, addresses on
 /// `contoso.example`; a test checks both.
 nonisolated enum DemoBlueprints {
     static let microsoft365ID = DemoSamples.uuid(0xb101)
@@ -29,7 +29,7 @@ nonisolated enum DemoBlueprints {
         deployment: #"{"state":"NOT_DEPLOYED"}"#,
         configurationID: DemoSamples.uuid(0xc103), profileName: "Contoso Helpdesk",
         payloads: [payload(
-            identifier: "com.contoso.example.helpdesk.settings", name: "Helpdesk",
+            uuid: DemoSamples.uuid(0xa103), name: "Helpdesk",
             content: #"{"com.contoso.example.helpdesk":{"Forced":[{"mcx_preference_settings":{"SupportURL":"https://help.contoso.example","SupportEmail":"helpdesk@contoso.example","ShowStatusMenu":true,"RefreshInterval":15,"WindowOpacity":0.85}}]}}"#)])
 
     static let chrome = blueprint(
@@ -40,7 +40,7 @@ nonisolated enum DemoBlueprints {
         deployment: #"{"state":"OUT_OF_DATE","lastDeployment":{"started":"2026-10-22T07:45:00.000Z","state":"SUCCEEDED"}}"#,
         configurationID: DemoSamples.uuid(0xc102), profileName: "Contoso Chrome",
         payloads: [payload(
-            identifier: "com.contoso.example.chrome.settings", name: "Chrome",
+            uuid: DemoSamples.uuid(0xa102), name: "Chrome",
             content: #"{"com.google.Chrome":{"Forced":[{"mcx_preference_settings":{"HomepageLocation":"https://intranet.contoso.example","HomepageIsNewTabPage":false,"URLBlocklist":["games.contoso.example","file://*"],"ExtensionSettings":{"*":{"installation_mode":"blocked"},"contosoexamplepasswordmanagerext":{"installation_mode":"force_installed","update_url":"https://extensions.contoso.example/update.xml"}},"BrowserSignin":0}}]}}"#)])
 
     static let microsoft365 = blueprint(
@@ -51,17 +51,17 @@ nonisolated enum DemoBlueprints {
         configurationID: DemoSamples.uuid(0xc101), profileName: "Contoso Microsoft 365",
         payloads: [
             payload(
-                identifier: "com.contoso.example.microsoft365.autoupdate", name: "Microsoft AutoUpdate",
+                uuid: DemoSamples.uuid(0xa101), name: "Microsoft AutoUpdate",
                 content: #"{"com.microsoft.autoupdate2":{"Forced":[{"mcx_preference_settings":{"HowToCheck":"AutomaticDownload","UpdateCheckFrequency":720,"EnableCheckForUpdatesButton":false}}],"Set-Once":[{"mcx_data_timestamp":"2026-10-01T08:00:00Z","mcx_preference_settings":{"AcknowledgedDataCollectionPolicy":"RequiredDataOnly"}}],"Often":[{"mcx_preference_settings":{"StartDaemonOnAppLaunch":true}}]}}"#),
             payload(
-                identifier: "com.contoso.example.microsoft365.outlook", name: "Outlook",
+                uuid: DemoSamples.uuid(0xa104), name: "Outlook",
                 content: #"{"com.microsoft.Outlook":{"Forced":[{"mcx_preference_settings":{"OfficeAutoSignIn":true,"DefaultEmailAddressOrDomain":"contoso.example","HideFoldersOnMyComputerRootInFolderList":true,"WeeksToSync":12}}]}}"#),
         ])
 
     // MARK: Building blocks, compact JSON in the service's key order
 
-    private static func payload(identifier: String, name: String, content: String) -> String {
-        #"{"payloadType":"com.apple.ManagedClient.preferences","payloadUUID":"\#(identifier)","PayloadContent":\#(content),"payloadVersion":1,"payloadIdentifier":"\#(identifier)","payloadDisplayName":"\#(name)","payloadOrganization":"Contoso"}"#
+    private static func payload(uuid: String, name: String, content: String) -> String {
+        #"{"payloadType":"com.apple.ManagedClient.preferences","payloadUUID":"\#(uuid)","PayloadContent":\#(content),"payloadVersion":1,"payloadIdentifier":"\#(uuid)","payloadDisplayName":"\#(name)","payloadOrganization":"Contoso"}"#
     }
 
     private static func blueprint(

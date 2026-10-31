@@ -85,13 +85,13 @@ nonisolated enum PlistImporter {
     }
 
     /// Parses a .plist (one domain named after the file) or a .mobileconfig
-    /// (signed or unsigned). From a mobileconfig, ManagedClient payloads are
+    /// (signed or unsigned). From a mobileconfig, Managed Preferences payloads are
     /// unpacked per domain and mode; if there are none, every other payload is
     /// imported as a domain named after its PayloadType, without Payload* keys.
     static func domains(from data: Data, fileName: String) throws -> [ImportedDomain] {
         let root = try propertyList(from: data)
         guard let dictionary = root as? [String: Any] else {
-            throw ImportError(message: "The file's top level is not a dictionary.")
+            throw ImportError(message: "The file’s top level is not a dictionary.")
         }
 
         if dictionary["PayloadType"] as? String == "Configuration",
@@ -115,6 +115,24 @@ nonisolated enum PlistImporter {
         guard case .dictionary(let nodes) = PlistValue(propertyList: dictionary) else { return [] }
         let name = (fileName as NSString).deletingPathExtension
         return [ImportedDomain(name: name.isEmpty ? "com.example.imported" : name, mode: "Forced", settings: nodes)]
+    }
+
+    /// Which imported settings "Replace Settings from File…" uses for one entry.
+    enum SettingsMatch: Equatable {
+        /// The same domain: with the entry's mode if the file has it.
+        case sameDomain(ImportedDomain)
+        /// The file has no settings for this domain; its first domain could be
+        /// used, but only after asking.
+        case otherDomain(ImportedDomain)
+        case none
+    }
+
+    static func settingsMatch(forDomain name: String, mode: String, in imported: [ImportedDomain]) -> SettingsMatch {
+        if let match = imported.first(where: { $0.name == name && $0.mode == mode })
+            ?? imported.first(where: { $0.name == name }) {
+            return .sameDomain(match)
+        }
+        return imported.first.map(SettingsMatch.otherDomain) ?? .none
     }
 
     private static func domainsFromManagedClientPayload(_ payload: [String: Any]) -> [ImportedDomain] {

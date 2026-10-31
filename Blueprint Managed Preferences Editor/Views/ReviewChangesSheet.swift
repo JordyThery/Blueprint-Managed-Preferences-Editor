@@ -35,7 +35,7 @@ struct ReviewChangesSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Review Changes").font(.title3.weight(.semibold))
-                Text("“\(editor.base.overview.name)” · \(changes.count) change\(changes.count == 1 ? "" : "s")")
+                Text("“\(editor.base.overview.name)” · \(counted(changes.count, "change"))")
                     .foregroundStyle(.secondary)
             }
             .padding()
@@ -60,7 +60,7 @@ struct ReviewChangesSheet: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Save sends PATCH with the complete steps array (only these changes differ) after checking the blueprint hasn't changed on the server and writing a backup. The blueprint then shows Out of Date until deployed.")
+                Text("Save checks that the Blueprint hasn’t changed on the server, writes a backup, then sends the complete steps array with only these changes. The Blueprint shows Out of Date until it’s deployed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -92,7 +92,7 @@ struct ReviewChangesSheet: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("After saving, the blueprint is deployed to its scope.\n\n\(editor.base.scopeDescription)")
+            Text("After saving, the Blueprint is deployed to its scope.\n\n\(editor.base.scopeDescription)")
         }
     }
 }

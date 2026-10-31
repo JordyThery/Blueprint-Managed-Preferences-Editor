@@ -4,7 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Raw JSON debug view: the GET response exactly as received or pretty-printed,
-/// and, when there are unsaved edits, the exact PATCH body that Save would send.
+/// and, when there are unsaved edits, the PATCH body that Save would send
+/// (pretty-printed; Save sends it compact).
 struct RawJSONView: View {
     let detail: JamfPlatform.BlueprintDetail
     var pendingPatchBody: Data?
@@ -58,7 +59,7 @@ struct RawJSONView: View {
             }
             .padding(8)
             if effectiveFormat == .patch {
-                Text("This is the body Save sends with PATCH (Content-Type: application/merge-patch+json): the complete steps array, with only the edited payloads changed.")
+                Text("The body Save sends with PATCH (Content-Type: application/merge-patch+json), pretty-printed here and sent compact: the complete steps array, with only the edited payloads changed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,7 +90,7 @@ struct RawJSONView: View {
     }
 }
 
-/// Name, state and timestamps of a blueprint.
+/// Name, state and timestamps of a Blueprint.
 struct BlueprintHeader: View {
     let detail: JamfPlatform.BlueprintDetail
 

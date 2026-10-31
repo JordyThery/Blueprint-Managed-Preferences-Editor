@@ -10,7 +10,22 @@ struct DomainEditorView: View {
 
     @State private var selection = Set<PlistNode.ID>()
     @State private var isPasting = false
-    @State private var message: String?
+    @State private var message: ImportMessage?
+    @State private var otherDomain: OtherDomainImport?
+
+    struct ImportMessage {
+        let title: String
+        let text: String
+    }
+
+    /// A file without settings for this domain, waiting for "Use …".
+    struct OtherDomainImport {
+        let imported: ImportedDomain
+        let fileName: String
+    }
+
+    /// Edits are allowed and the domain's payload has the expected shape.
+    private var canEdit: Bool { editor.canEdit(domainID: domainID) }
 
     var body: some View {
         if let domain = editor.domain(withID: domainID) {
@@ -30,7 +45,7 @@ struct DomainEditorView: View {
                         PlistOutlineView(
                             nodes: entry.settings,
                             selection: $selection,
-                            isEditable: editor.canEdit,
+                            isEditable: canEdit,
                             actions: actions(entry: entry)
                         )
                         Divider()
@@ -38,10 +53,29 @@ struct DomainEditorView: View {
                     }
                 }
             }
-            .alert("Import", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
+            .alert(
+                message?.title ?? "",
+                isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } }),
+                presenting: message
+            ) { _ in
                 Button("OK") {}
-            } message: {
-                Text(message ?? "")
+            } message: { message in
+                Text(message.text)
+            }
+            .confirmationDialog(
+                "Use the settings of “\(otherDomain?.imported.name ?? "")”?",
+                isPresented: Binding(get: { otherDomain != nil }, set: { if !$0 { otherDomain = nil } }),
+                titleVisibility: .visible,
+                presenting: otherDomain
+            ) { pending in
+                Button("Replace Settings") {
+                    if let entry = editor.currentEntry(of: domain) {
+                        replace(domain: domain, entry: entry, with: pending.imported, fileName: pending.fileName)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text("\(pending.fileName) has no settings for \(domain.name). Its settings for \(pending.imported.name) would replace this domain’s settings.")
             }
             .sheet(isPresented: $isPasting) {
                 PastePlistSheet { nodes in
@@ -74,7 +108,7 @@ struct DomainEditorView: View {
                         }
                     }
                     .fixedSize()
-                    .help("This domain has several MCX items; choose which to edit")
+                    .help("This domain has several entries for one mode; choose which to edit")
                 }
                 Picker("Management", selection: Binding(
                     get: { entry.mode },
@@ -83,8 +117,8 @@ struct DomainEditorView: View {
                     ForEach(modes(including: entry.mode), id: \.self) { Text($0).tag($0) }
                 }
                 .fixedSize()
-                .disabled(!editor.canEdit)
-                .help("Forced: always enforced. Set-Once: applied once, users may change it. Often: re-applied at every login.")
+                .disabled(!canEdit)
+                .help("Forced: always enforced; Set-Once: applied once, users may change it; Often: applied again at every login")
             }
         }
         .padding(12)
@@ -99,25 +133,24 @@ struct DomainEditorView: View {
     private func toolbar(domain: PreferenceDomain, entry: MCXEntry) -> some View {
         let single = selection.count == 1 ? selection.first : nil
         let selectedNode = single.flatMap { entry.settings.node(withID: $0) }
-        let canEdit = editor.canEdit
         return HStack(spacing: 4) {
             Group {
-                Button { addItem(entry: entry) } label: { Image(systemName: "plus") }
+                Button { addItem(entry: entry) } label: { Label("Add Item", systemImage: "plus").labelStyle(.iconOnly) }
                     .help("Add item after the selection")
-                Button { addChild(entry: entry) } label: { Image(systemName: "plus.square.on.square") }
+                Button { addChild(entry: entry) } label: { Label("Add Child", systemImage: "plus.square.on.square").labelStyle(.iconOnly) }
                     .help("Add child to the selected array or dictionary")
                     .disabled(selectedNode?.value.type?.isContainer != true)
-                Button { delete(entry: entry) } label: { Image(systemName: "minus") }
+                Button { delete(entry: entry) } label: { Label("Delete", systemImage: "minus").labelStyle(.iconOnly) }
                     .help("Delete selected items")
                     .disabled(selection.isEmpty)
-                Button { duplicate(entry: entry) } label: { Image(systemName: "plus.rectangle.on.rectangle") }
+                Button { duplicate(entry: entry) } label: { Label("Duplicate", systemImage: "plus.rectangle.on.rectangle").labelStyle(.iconOnly) }
                     .help("Duplicate selected items")
                     .disabled(selection.isEmpty)
                 Divider().frame(height: 16)
-                Button { move(entry: entry, by: -1) } label: { Image(systemName: "arrow.up") }
+                Button { move(entry: entry, by: -1) } label: { Label("Move Up", systemImage: "arrow.up").labelStyle(.iconOnly) }
                     .help("Move up")
                     .disabled(single == nil)
-                Button { move(entry: entry, by: 1) } label: { Image(systemName: "arrow.down") }
+                Button { move(entry: entry, by: 1) } label: { Label("Move Down", systemImage: "arrow.down").labelStyle(.iconOnly) }
                     .help("Move down")
                     .disabled(single == nil)
             }
@@ -146,7 +179,7 @@ struct DomainEditorView: View {
             },
             validateKey: { id, key in
                 let trimmed = key.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty { return "The key can't be empty." }
+                if trimmed.isEmpty { return "The key can’t be empty." }
                 return siblingKeys(of: id, in: entry.settings).contains(key) ? "“\(key)” already exists at this level." : nil
             },
             setValue: { id, value in
@@ -244,22 +277,30 @@ struct DomainEditorView: View {
     private func importFromFile(domain: PreferenceDomain, entry: MCXEntry) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.propertyList, .xml, UTType(filenameExtension: "mobileconfig") ?? .data]
-        panel.message = "Choose a .plist or .mobileconfig. Its settings replace this domain's settings."
+        panel.message = "Choose a .plist or .mobileconfig. Its settings replace this domain’s settings."
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let fileName = url.lastPathComponent
         do {
-            let imported = try PlistImporter.domains(from: Data(contentsOf: url), fileName: url.lastPathComponent)
-            guard let match = imported.first(where: { $0.name == domain.name }) ?? imported.first else {
-                message = "No settings were found in \(url.lastPathComponent)."
-                return
-            }
-            if replaceSettings(entry: entry, with: match.settings) {
-                message = "Replaced \(domain.name) with \(match.settings.count) key(s) from \(url.lastPathComponent)" +
-                    (match.name != domain.name && imported.count > 1 ? " (domain \(match.name))" : "") + ". Use Undo to revert."
-            } else {
-                message = "\(url.lastPathComponent) matches the current settings; nothing changed."
+            let imported = try PlistImporter.domains(from: Data(contentsOf: url), fileName: fileName)
+            switch PlistImporter.settingsMatch(forDomain: domain.name, mode: entry.mode, in: imported) {
+            case .sameDomain(let match):
+                replace(domain: domain, entry: entry, with: match, fileName: fileName)
+            case .otherDomain(let match):
+                // A single .plist is named after its file, so it rarely matches: ask first.
+                otherDomain = OtherDomainImport(imported: match, fileName: fileName)
+            case .none:
+                message = ImportMessage(title: "Nothing Imported", text: "No settings were found in \(fileName).")
             }
         } catch {
-            message = error.localizedDescription
+            message = ImportMessage(title: "Import Failed", text: error.localizedDescription)
+        }
+    }
+
+    private func replace(domain: PreferenceDomain, entry: MCXEntry, with match: ImportedDomain, fileName: String) {
+        if replaceSettings(entry: entry, with: match.settings) {
+            message = ImportMessage(title: "Imported", text: "Replaced the settings of \(domain.name) with \(counted(match.settings.count, "key")) from \(fileName). Use Undo to revert.")
+        } else {
+            message = ImportMessage(title: "Nothing Imported", text: "\(fileName) matches the current settings; nothing changed.")
         }
     }
 
@@ -286,7 +327,7 @@ private struct PastePlistSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Paste Property List").font(.headline)
-            Text("Paste an XML property list dictionary (or a JSON object). It replaces this domain's settings.")
+            Text("Paste an XML property list dictionary (or a JSON object). It replaces this domain’s settings.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             TextEditor(text: $text)

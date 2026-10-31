@@ -8,7 +8,7 @@ extension AboutConfiguration {
         appName: "Blueprint Managed Preferences Editor",
         copyright: AboutCopyright(year: "2026", holder: "Jordy Thery"),
         author: "Created by Jordy Thery",
-        summary: "Edit the Managed Preferences that Jamf Pro’s blueprint UI can’t.",
+        summary: "Edit the Managed Preferences that Jamf Pro’s Blueprint UI can’t.",
         links: [
             AboutLink("github.com/JordyThery/Blueprint-Managed-Preferences-Editor", address: "https://github.com/JordyThery/Blueprint-Managed-Preferences-Editor"),
         ].compactMap { $0 }
