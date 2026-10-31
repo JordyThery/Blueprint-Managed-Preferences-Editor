@@ -1,6 +1,6 @@
 import Foundation
 
-/// The app's own errors. Errors from Jamf come as JTKit's `JamfPlatformError`,
+/// The app's own errors. Errors from Jamf come as JTKit's `JamfPlatform.APIError`,
 /// in the format every app shows: the HTTP status line, one
 /// `CODE (field): description` line per error, the Trace ID and hints.
 nonisolated enum APIError: Error, LocalizedError, Sendable {

@@ -73,10 +73,10 @@ struct PlatformAPIClientTests {
     @Test func deleteAndUndeployNeverReachTheNetwork() async {
         let server = MockServer { _ in Issue.record("No request may be sent"); return .json(500, "{}") }
         let client = makeClient(server)
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             try await client.send(HTTPRequest(method: "DELETE", path: "/blueprints/v1/blueprints/abc"))
         }
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             try await client.send(HTTPRequest(method: "POST", path: "/blueprints/v1/blueprints/abc/undeploy"))
         }
         #expect(server.requests.isEmpty)
@@ -87,7 +87,7 @@ struct PlatformAPIClientTests {
         do {
             _ = try await makeClient(server).send(HTTPRequest(method: "DELETE", path: "/blueprints/v1/blueprints/abc"))
             Issue.record("Expected a refusal")
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             guard case .refused("DELETE", "/blueprints/v1/blueprints/abc") = error.kind else { Issue.record("Got \(error)"); return }
             #expect(error.localizedDescription.contains("never creates, deletes or undeploys"))
         } catch {
@@ -136,7 +136,7 @@ struct PlatformAPIClientTests {
 
     @Test func secondConsecutive401IsThrown() async {
         let server = MockServer { $0.path == "/auth/token" ? Self.token : .json(401, "{}") }
-        await #expect(throws: JamfPlatformError.self) { try await JamfPlatform.Blueprints(client: makeClient(server)).listPage() }
+        await #expect(throws: JamfPlatform.APIError.self) { try await JamfPlatform.Blueprints(client: makeClient(server)).listPage() }
         #expect(apiRequests(server).count == 2)
     }
 
@@ -165,7 +165,7 @@ struct PlatformAPIClientTests {
 
     @Test func givesUpAfterFourAttempts() async {
         let server = MockServer { $0.path == "/auth/token" ? Self.token : .json(503, "{}") }
-        await #expect(throws: JamfPlatformError.self) { try await JamfPlatform.Blueprints(client: makeClient(server)).listPage() }
+        await #expect(throws: JamfPlatform.APIError.self) { try await JamfPlatform.Blueprints(client: makeClient(server)).listPage() }
         #expect(apiRequests(server).count == 4)
     }
 
@@ -195,7 +195,7 @@ struct PlatformAPIClientTests {
 
     @Test func deployIsNotRetriedOn5xx() async {
         let server = MockServer { $0.path == "/auth/token" ? Self.token : .json(503, "{}") }
-        await #expect(throws: JamfPlatformError.self) { try await JamfPlatform.Blueprints(client: makeClient(server)).deploy(id: "abc") }
+        await #expect(throws: JamfPlatform.APIError.self) { try await JamfPlatform.Blueprints(client: makeClient(server)).deploy(id: "abc") }
         #expect(apiRequests(server).count == 1)
         #expect(apiRequests(server).first?.path == "/blueprints/v1/blueprints/abc/deploy")
     }
@@ -216,7 +216,7 @@ struct PlatformAPIClientTests {
         do {
             _ = try await JamfPlatform.Blueprints(client: makeClient(server)).detail(id: "abc")
             Issue.record("Expected an HTTP error")
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             #expect(error.hasCode(.divisionPatchNotAllowed))
             #expect(error.localizedDescription.contains("abc-123"))
         } catch {
@@ -231,9 +231,9 @@ struct PlatformAPIClientTests {
         do {
             _ = try PlatformAPIClient.make(credentials: credentials, log: nil)
             Issue.record("Expected the Environment ID to be refused")
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             guard case .invalidEnvironmentID("env-1") = error.kind else { Issue.record("Got \(error)"); return }
-            #expect(error.localizedDescription.contains("is not a UUID"))
+            #expect(error.localizedDescription == "The Environment ID isn’t a UUID (8-4-4-4-12 hexadecimal characters). Copy it from Jamf Account.")
         } catch {
             Issue.record("Got \(error)")
         }
@@ -244,7 +244,7 @@ struct PlatformAPIClientTests {
         do {
             try await makeClient(server).signIn()
             Issue.record("Expected a sign-in error")
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             guard case .signIn(401, _, _) = error.kind else { Issue.record("Got \(error)"); return }
             #expect(error.localizedDescription.contains("Check the client ID, client secret and region"))
         } catch {
@@ -255,7 +255,7 @@ struct PlatformAPIClientTests {
     @Test @MainActor func refusedRequestIsLoggedAsWarning() async {
         let log = ActivityLog()
         let server = MockServer { _ in Issue.record("No request may be sent"); return .json(500, "{}") }
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             try await makeClient(server, log: log).send(HTTPRequest(method: "DELETE", path: "/blueprints/v1/blueprints/abc"))
         }
         #expect(log.entries.count == 1)
@@ -275,7 +275,7 @@ struct PlatformAPIClientTests {
         #expect(wait.note?.contains("waiting 7 s, attempt 2 of 4") == true)
     }
 
-    /// Managed Preferences payloads can hold licence keys and tokens, so the
+    /// Managed Preferences payloads can hold license keys and tokens, so the
     /// default bodies rule applies: what is sent is never recorded, and what
     /// comes back only for errors.
     @Test @MainActor func secretsAndBodiesAreNotLogged() async throws {

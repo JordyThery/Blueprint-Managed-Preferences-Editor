@@ -273,7 +273,7 @@ final class EditorModel {
 
             // 3. PATCH the complete steps array.
             guard let steps = snapshot.updatedSteps else {
-                throw JamfPlatformError(.invalidResponse("The blueprint has no steps array to update."))
+                throw JamfPlatform.APIError(.invalidResponse("The blueprint has no steps array to update."))
             }
             try await service.patchSteps(id: blueprintID, steps: steps)
 
@@ -372,7 +372,7 @@ final class EditorModel {
 
     private func handle(_ error: Error, action: String) {
         // JTKit's message ends with the hint that the Blueprint is assigned to a division.
-        if let platformError = error as? JamfPlatformError, platformError.hasCode(.divisionPatchNotAllowed) {
+        if let platformError = error as? JamfPlatform.APIError, platformError.hasCode(.divisionPatchNotAllowed) {
             app.readOnlyBlueprintIDs.insert(blueprintID)
             alert = Alert(kind: .error, title: "Blueprint Is Read-Only", message: platformError.localizedDescription)
             return

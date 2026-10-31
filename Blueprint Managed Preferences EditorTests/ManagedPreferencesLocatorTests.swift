@@ -32,12 +32,12 @@ struct ManagedPreferencesLocatorTests {
     }
 }
 
-/// Errors from Jamf come as JTKit's `JamfPlatformError`; the app relies on
+/// Errors from Jamf come as JTKit's `JamfPlatform.APIError`; the app relies on
 /// its codes, its Trace ID line and its redaction.
 @Suite("API errors")
 struct APIErrorTests {
-    private func statusError(_ status: Int, _ body: String) -> JamfPlatformError {
-        JamfPlatformError(.status(status, body: JamfPlatform.ErrorBody(data: Data(body.utf8)), text: body,
+    private func statusError(_ status: Int, _ body: String) -> JamfPlatform.APIError {
+        JamfPlatform.APIError(.status(status, body: JamfPlatform.ErrorBody(data: Data(body.utf8)), text: body,
                                   method: "PATCH", path: "/blueprints/v1/blueprints/abc"))
     }
 
@@ -56,10 +56,10 @@ struct APIErrorTests {
 
     /// Error messages shown to the user go through JTKit's redaction.
     @Test func errorMessagesAreRedacted() {
-        let error = JamfPlatformError(.status(400, body: nil, text: #"{"message":"bad request","access_token":"tok-123"}"#,
+        let error = JamfPlatform.APIError(.status(400, body: nil, text: #"{"message":"bad request","access_token":"tok-123"}"#,
                                               method: "GET", path: "/blueprints/v1/blueprints"))
         #expect(!error.localizedDescription.contains("tok-123"))
-        let signIn = JamfPlatformError(.signIn(status: 401, body: nil, text: #"{"client_secret":"s3cr3t"}"#))
+        let signIn = JamfPlatform.APIError(.signIn(status: 401, body: nil, text: #"{"client_secret":"s3cr3t"}"#))
         #expect(!signIn.localizedDescription.contains("s3cr3t"))
     }
 }

@@ -87,8 +87,8 @@ struct LiveTenant: Sendable {
             ? "\(JamfPlatform.Blueprints.path)/\(JamfPlatform.pathSegment(id))"
             : "\(JamfPlatform.Client.deviceGroupsPath)/\(JamfPlatform.pathSegment(id))"
         do {
-            _ = try await api.send(HTTPRequest(method: "DELETE", path: path, safeToRepeat: true))
-        } catch let error as JamfPlatformError where error.status == 404 {
+            _ = try await api.send(HTTPRequest(method: "DELETE", path: path, repeating: .safe))
+        } catch let error as JamfPlatform.APIError where error.status == 404 {
             // Not counted from the answer: JTKit's read-back (0.12.6) marks it
             // removed only once the object is gone (Jamf answered 404 for a
             // group it still listed, 2026-10-30); a leftover fails the run.
@@ -104,7 +104,7 @@ struct LiveTenant: Sendable {
         while true {
             do {
                 return try await delete(resource: "device-groups", id: id)
-            } catch let error as JamfPlatformError where error.status == 422 && error.hasDependencies && Date() < deadline {
+            } catch let error as JamfPlatform.APIError where error.status == 422 && error.hasDependencies && Date() < deadline {
                 try await Task.sleep(for: .seconds(5))
             }
         }
@@ -116,7 +116,7 @@ struct LiveTenant: Sendable {
         while Date() < deadline {
             do {
                 _ = try await blueprints.detail(id: id)
-            } catch let error as JamfPlatformError where error.status == 404 {
+            } catch let error as JamfPlatform.APIError where error.status == 404 {
                 return
             }
             try await Task.sleep(for: .seconds(3))
@@ -124,7 +124,7 @@ struct LiveTenant: Sendable {
     }
 }
 
-private extension JamfPlatformError {
+private extension JamfPlatform.APIError {
     var hasDependencies: Bool {
         body?.errors.contains { $0.code == "HAS_DEPENDENCIES" } == true
     }

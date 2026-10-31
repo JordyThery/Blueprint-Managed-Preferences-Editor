@@ -49,7 +49,7 @@ nonisolated enum PlatformAPIClient {
     /// - Parameters:
     ///   - log: JTKit's activity log; nil records nothing (tests).
     ///   - sleep: the wait before a retry, injectable for tests.
-    /// - Throws: `JamfPlatformError` when the Environment ID isn't a UUID.
+    /// - Throws: `JamfPlatform.APIError` when the Environment ID isn't a UUID.
     static func make(
         credentials: PlatformCredentials,
         session: URLSession = .shared,
@@ -99,7 +99,7 @@ nonisolated enum PlatformAPIClient {
     }
 
     /// The app's own hints for an error.
-    static func hints(for error: JamfPlatformError) -> [String] {
+    static func hints(for error: JamfPlatform.APIError) -> [String] {
         if case .refused = error.kind { return [refusedHint] }
         return []
     }
