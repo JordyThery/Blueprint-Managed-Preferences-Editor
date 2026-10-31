@@ -24,8 +24,14 @@ nonisolated enum BackupStore {
             .appending(path: "Backups", directoryHint: .isDirectory)
     }
 
+    /// The Blueprint's own folder, always directly inside `root`: "/" and ":"
+    /// become "_", and an ID that is empty or only dots ("..") is replaced by
+    /// underscores, so a server-supplied ID can't point outside `root`.
     static func directory(for blueprintID: String, root: URL = rootURL) -> URL {
-        let safe = blueprintID.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
+        var safe = blueprintID.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
+        if safe.allSatisfy({ $0 == "." }) {
+            safe = String(repeating: "_", count: max(safe.count, 1))
+        }
         return root.appending(path: safe, directoryHint: .isDirectory)
     }
 
@@ -57,7 +63,7 @@ nonisolated enum BackupStore {
         }
     }
 
-    /// Backups for one blueprint, newest first.
+    /// Backups for one Blueprint, newest first.
     static func backups(for blueprintID: String, root: URL = rootURL) -> [BlueprintBackup] {
         let directory = directory(for: blueprintID, root: root)
         let keys: [URLResourceKey] = [.fileSizeKey, .creationDateKey]
@@ -87,7 +93,7 @@ nonisolated enum BackupStore {
         let data = try Data(contentsOf: backup.url)
         let detail = try JamfPlatform.BlueprintDetail(data: data)
         guard detail.id == backup.blueprintID else {
-            throw BackupError(message: "The backup belongs to blueprint \(detail.id), not \(backup.blueprintID).")
+            throw BackupError(message: "The backup belongs to Blueprint \(detail.id), not \(backup.blueprintID).")
         }
         return detail
     }

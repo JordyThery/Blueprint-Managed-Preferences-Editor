@@ -32,7 +32,7 @@ final class ConnectionStorageTests {
 
     private var oldProfiles: [ConnectionProfile] {
         [ConnectionProfile(id: first, name: "Production", region: .eu,
-                           environmentID: "e77c1408-10c8-4007-b177-abc9157fbcaa", clientID: "client-1"),
+                           environmentID: "5f1e2d3c-4b5a-4968-8776-655443322110", clientID: "client-1"),
          ConnectionProfile(id: second, name: "Test", region: .us, environmentID: "", clientID: "")]
     }
 

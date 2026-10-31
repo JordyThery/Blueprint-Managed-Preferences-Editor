@@ -1,8 +1,10 @@
+import AppKit
 import JTKit
 import SwiftUI
 
 @main struct MyApp: App {
-    @State private var model = AppModel.forLaunch()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    private var model: AppModel { appDelegate.model }
 
     var body: some Scene {
         Window("Blueprint Managed Preferences Editor", id: WindowID.main) {
@@ -39,6 +41,26 @@ enum WindowID {
     static let main = "main"
 }
 
+/// Owns the app's model, so Quit can ask before unsaved edits are lost or
+/// while a change is still being sent.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let model = AppModel.forLaunch()
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let question = model.quitQuestion else { return .terminateNow }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = question.title
+        alert.informativeText = question.message
+        // No default button: Return doesn't quit by accident, and Cancel (Escape) stays on the leading side.
+        let quit = alert.addButton(withTitle: question.quitButton)
+        quit.hasDestructiveAction = true
+        quit.keyEquivalent = ""
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+}
+
 private struct AppCommands: Commands {
     let model: AppModel
     @Environment(\.openWindow) private var openWindow
@@ -60,10 +82,16 @@ private struct AppCommands: Commands {
         ) {
             DemoModeToggle(demo: model.demo) { openWindow(id: WindowID.main) }
         }
+        // The toolbar's Fetch by ID and Refresh, also in the menu bar.
         CommandGroup(after: .toolbar) {
             Button("Refresh Blueprints") { model.refresh() }
                 .keyboardShortcut("r", modifiers: .command)
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || !model.hasActiveConnection)
+            Button("Fetch Blueprint by ID…") {
+                openWindow(id: WindowID.main)
+                model.isShowingFetchByID = true
+            }
+            .disabled(!model.hasActiveConnection)
         }
     }
 }

@@ -89,16 +89,16 @@ struct LiveTenant: Sendable {
         do {
             _ = try await api.send(HTTPRequest(method: "DELETE", path: path, repeating: .safe))
         } catch let error as JamfPlatform.APIError where error.status == 404 {
-            // Not counted from the answer: JTKit's read-back (0.12.6) marks it
-            // removed only once the object is gone (Jamf answered 404 for a
-            // group it still listed, 2026-10-30); a leftover fails the run.
+            // Not counted from the answer: JTKit's read-back marks it removed
+            // only once the object is gone (Jamf can answer 404 for a group it
+            // still lists); a leftover fails the run.
         }
     }
 
     /// Deletes a test group once no Blueprint uses it any more. Jamf removes a
     /// deleted Blueprint in the background, and until then refuses the
-    /// group's delete with 422 HAS_DEPENDENCIES (seen 2026-10-28 in
-    /// AppSettings2Blueprint); only that answer is retried, for up to two minutes.
+    /// group's delete with 422 HAS_DEPENDENCIES; only that answer is
+    /// retried, for up to two minutes.
     func deleteGroupWhenFree(id: String) async throws {
         let deadline = Date().addingTimeInterval(120)
         while true {
@@ -271,7 +271,7 @@ struct LiveBlueprintTests {
     /// One step with a migrated-profile component holding one Managed
     /// Preferences payload (the shape Jamf gives a migrated Classic profile):
     /// a made-up domain with one key, false. Jamf requires real UUIDs as
-    /// payload UUIDs (400 PATTERN otherwise, seen 2026-10-28).
+    /// payload UUIDs (400 PATTERN otherwise).
     static func step() throws -> LosslessJSON {
         let payload = UUID().uuidString
         let configuration = UUID().uuidString

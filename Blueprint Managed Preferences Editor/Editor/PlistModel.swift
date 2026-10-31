@@ -178,7 +178,7 @@ nonisolated enum PlistParsing {
         case .data:
             let compact = text.filter { !$0.isWhitespace }
             guard Data(base64Encoded: compact) != nil else {
-                return .failure(PlistValidationError(message: "Not valid Base64."))
+                return .failure(PlistValidationError(message: "“\(text)” is not valid Base64."))
             }
             return .success(.data(compact))
         case .array, .dictionary:

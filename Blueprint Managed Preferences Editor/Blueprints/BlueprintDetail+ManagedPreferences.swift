@@ -10,11 +10,7 @@ nonisolated extension JamfPlatform.BlueprintDetail {
         ManagedPreferencesLocator.locate(in: json)
     }
 
-    var containsManagedPreferences: Bool { !managedPreferencePayloads.isEmpty }
-
-    /// All preference domains across every ManagedClient payload, in document order.
-    var preferenceDomains: [String] { Self.domains(of: managedPreferencePayloads) }
-
+    /// All preference domains across the payloads, in document order.
     static func domains(of payloads: [ManagedPreferencesPayloadLocation]) -> [String] {
         var seen = Set<String>()
         return payloads.flatMap(\.domains).filter { seen.insert($0).inserted }

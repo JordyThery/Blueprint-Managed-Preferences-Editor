@@ -4,11 +4,12 @@ import Observation
 import os
 
 /// The saved connection profiles and the active one. JTKit's `ConnectionStore`
-/// keeps the profiles (without secrets) where they have always been, under the
-/// UserDefaults key `connectionProfiles`, and their client secrets in the login
-/// Keychain (service `Blueprint Managed Preferences Editor.client-secret`,
-/// account = profile UUID). The active profile is saved under
-/// `selectedConnectionProfileID`.
+/// keeps the profiles (without secrets) under the UserDefaults key
+/// `connectionProfiles`, and their client secrets in the login Keychain
+/// (service `Blueprint Managed Preferences Editor.client-secret`, account =
+/// profile UUID). The active profile is saved under
+/// `selectedConnectionProfileID`. Never rename these: saved connections and
+/// secrets are keyed by them.
 @Observable
 final class ProfileStore {
     static let profilesKey = "connectionProfiles"
@@ -41,7 +42,7 @@ final class ProfileStore {
         }
     }
 
-    /// The client secrets, as earlier versions of the app saved them.
+    /// The client secrets. Never rename: saved secrets are keyed by these.
     nonisolated static let keychain = KeychainSecretStore(
         service: "Blueprint Managed Preferences Editor.client-secret",
         label: "Blueprint Managed Preferences Editor client secret",
@@ -54,10 +55,6 @@ final class ProfileStore {
 
     var selectedProfile: ConnectionProfile? {
         selectedProfileID.flatMap(connections.record(id:))
-    }
-
-    func profile(id: UUID) -> ConnectionProfile? {
-        connections.record(id: id)
     }
 
     /// A new profile for + in Settings › Connections. It doesn't change the

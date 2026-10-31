@@ -46,7 +46,9 @@ struct SidebarView: View {
             ContentUnavailableView(
                 "No Blueprints Loaded",
                 systemImage: "square.stack.3d.up",
-                description: Text("Click Refresh to discover blueprints.")
+                description: Text(model.hasActiveConnection
+                                  ? "Click Refresh to discover Blueprints."
+                                  : "Choose a connection, then click Refresh.")
             )
         } else if !model.searchText.isEmpty {
             ContentUnavailableView.search(text: model.searchText)
@@ -54,7 +56,7 @@ struct SidebarView: View {
             ContentUnavailableView(
                 "No Managed Preferences Found",
                 systemImage: "square.stack.3d.up.slash",
-                description: Text("None of the \(model.overviews.count) blueprints contain a com.apple.ManagedClient.preferences payload. Switch to All Blueprints to inspect them.")
+                description: Text("None of the \(counted(model.overviews.count, "Blueprint")) has a Managed Preferences payload (com.apple.ManagedClient.preferences). Switch to All Blueprints to inspect them.")
             )
         }
     }
@@ -70,7 +72,7 @@ private struct DiscoveryStatusView: View {
                 EmptyView()
             case .listing:
                 ProgressView().controlSize(.small)
-                Text("Listing blueprints…")
+                Text("Listing Blueprints…")
             case .fetchingDetails(let completed, let total):
                 ProgressView(value: Double(completed), total: Double(max(total, 1)))
                     .frame(width: 80)

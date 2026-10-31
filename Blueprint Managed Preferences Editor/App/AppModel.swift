@@ -2,7 +2,7 @@ import Foundation
 import JTKit
 import Observation
 
-/// App-wide state: the active connection, discovered blueprints, their editors
+/// App-wide state: the active connection, discovered Blueprints, their editors
 /// and JTKit's activity log.
 @Observable
 final class AppModel {
@@ -46,15 +46,24 @@ final class AppModel {
     private(set) var overviews: [JamfPlatform.BlueprintOverview] = []
     private(set) var details: [String: JamfPlatform.BlueprintDetail] = [:]
     private(set) var detailErrors: [String: String] = [:]
-    /// The preference domains of each Blueprint with a ManagedClient payload,
+    /// The preference domains of each Blueprint with a Managed Preferences payload,
     /// found once when it is stored: finding them walks the whole JSON.
     private(set) var preferenceDomains: [String: [String]] = [:]
     private(set) var discoveryState: DiscoveryState = .idle
-    /// One editor per blueprint with a ManagedClient payload, kept while switching
-    /// between blueprints so unsaved edits survive.
+    /// One editor per Blueprint with a Managed Preferences payload, kept while switching
+    /// between Blueprints so unsaved edits survive.
     private(set) var editors: [String: EditorModel] = [:]
     /// Blueprints that returned 409 DIVISION_PATCH_NOT_ALLOWED.
     var readOnlyBlueprintIDs: Set<String> = []
+    /// Counts connection changes. An operation that started before a change
+    /// leaves the app's state alone when it finishes.
+    private(set) var connectionGeneration = 0
+    /// An alert for the main window: the result of an operation that finished
+    /// after the connection changed, or edits discarded by a change nobody
+    /// was asked about.
+    var notice: EditorModel.Alert?
+    /// The Fetch by ID sheet, from the toolbar or the View menu.
+    var isShowingFetchByID = false
 
     /// Whether a Blueprint may not be written: assigned to a division, or
     /// refused for that before.
@@ -74,6 +83,11 @@ final class AppModel {
     /// The demo's client, one for the whole launch, like the demo server.
     private var demoClient: JamfPlatform.Client?
     private var refreshTask: Task<Void, Never>?
+    /// The tenant the loaded Blueprints and editors belong to (`tenantKey`).
+    private var loadedTenantKey = ""
+    /// Set by "Discard and Switch", so the change doesn't report the edits
+    /// it discards a second time.
+    private var discardAcknowledged = false
 
     static let demoModeKey = "demoMode"
 
@@ -87,6 +101,8 @@ final class AppModel {
         self.demo = demo ?? DemoMode(key: Self.demoModeKey, arguments: [DemoMode.launchArgument, "NO"])
         // Turning demo mode on or off discards the editors, so unsaved edits ask first.
         self.demo.asksBeforeSwitching = { [unowned self] in self.hasUnsavedChanges }
+        loadedTenantKey = tenantKey
+        observeTenant()
     }
 
     /// The app as launched. A sandbox run (`-JTKitSandbox YES`, UI tests)
@@ -114,6 +130,27 @@ final class AppModel {
         editors.values.contains(where: \.isDirty)
     }
 
+    /// A save, deploy, restore or reload is running.
+    var hasOperationInProgress: Bool {
+        editors.values.contains(where: \.isBusy)
+    }
+
+    /// Quit asks first when it would lose edits or cut off a running operation.
+    var quitQuestion: (title: String, message: String, quitButton: String)? {
+        if hasOperationInProgress {
+            return ("Quit while a change is being sent?",
+                    "A save, deploy or restore is still running. If you quit now, you won’t see whether it worked.",
+                    "Quit Anyway")
+        }
+        if hasUnsavedChanges {
+            let names = editors.values.filter(\.isDirty).map(\.base.overview.name).sorted()
+            return ("Quit and discard unsaved changes?",
+                    "Unsaved changes in \(names.map { "“\($0)”" }.joined(separator: ", ")) will be lost.",
+                    "Discard and Quit")
+        }
+        return nil
+    }
+
     // MARK: Connection
 
     /// Where another connection was chosen: the main window (toolbar picker,
@@ -125,7 +162,7 @@ final class AppModel {
         case settings
     }
 
-    /// A connection chosen while blueprint edits were unsaved, waiting for
+    /// A connection chosen while Blueprint edits were unsaved, waiting for
     /// "Discard and Switch".
     struct PendingConnectionSwitch: Equatable {
         let profileID: UUID
@@ -135,10 +172,10 @@ final class AppModel {
     var pendingConnectionSwitch: PendingConnectionSwitch?
 
     /// Makes `profileID` the active connection, leaving demo mode, or, when
-    /// blueprint edits are unsaved, keeps it waiting for "Discard and Switch",
+    /// Blueprint edits are unsaved, keeps it waiting for "Discard and Switch",
     /// since switching discards them. Returns true when it asks first.
     /// Clearing the choice (after the active connection was deleted) never
-    /// asks and stays in demo mode.
+    /// asks and stays in demo mode; edits it discards are reported (`notice`).
     @discardableResult
     func chooseConnection(_ profileID: UUID?, from origin: ConnectionSwitchOrigin) -> Bool {
         let leavesDemo = demo.isOn && origin == .mainWindow && profileID != nil
@@ -155,7 +192,9 @@ final class AppModel {
     func confirmConnectionSwitch() {
         guard let pending = pendingConnectionSwitch else { return }
         pendingConnectionSwitch = nil
+        discardAcknowledged = true
         select(pending.profileID)
+        tenantDidChangeIfNeeded()
     }
 
     /// The question about unsaved edits was already asked (or not needed).
@@ -168,6 +207,8 @@ final class AppModel {
     /// change. In demo mode the demo's, which reads no saved connection or
     /// Keychain item and reaches only the demo server.
     func currentClient() throws -> JamfPlatform.Client {
+        // Never a client for another tenant while the old tenant's Blueprints are loaded.
+        tenantDidChangeIfNeeded()
         if demo.isOn { return try currentDemoClient() }
         guard let profile = profileStore.selectedProfile,
               let credentials = profileStore.credentials(for: profile) else {
@@ -204,9 +245,55 @@ final class AppModel {
         return made
     }
 
-    /// Called when the user switches profile: clears everything loaded from the old tenant.
+    /// What the loaded Blueprints belong to: demo mode, or the active saved
+    /// connection with its region, Environment ID and client ID. Editing any
+    /// of those in Settings makes it another tenant.
+    private var tenantKey: String {
+        if demo.isOn { return "demo" }
+        guard let profile = profileStore.selectedProfile else { return "" }
+        return [profile.id.uuidString, profile.region.rawValue,
+                profile.environmentID.trimmingCharacters(in: .whitespacesAndNewlines),
+                profile.clientID.trimmingCharacters(in: .whitespacesAndNewlines)].joined(separator: "|")
+    }
+
+    /// Watches the tenant from the model, so the old tenant's Blueprints are
+    /// cleared whatever changed it (toolbar, Connection menu, Settings) and
+    /// whether or not the main window is open.
+    private func observeTenant() {
+        withObservationTracking {
+            _ = tenantKey
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.tenantDidChangeIfNeeded()
+                self?.observeTenant()
+            }
+        }
+    }
+
+    /// Clears everything loaded from the old tenant when the tenant changed.
+    /// Unsaved edits nobody was asked about are reported in `notice`. Demo
+    /// mode loads its sample Blueprints straight away.
+    func tenantDidChangeIfNeeded() {
+        let key = tenantKey
+        guard key != loadedTenantKey else { return }
+        // Demo mode's own question (JTKit) and "Discard and Switch" already asked.
+        let asked = discardAcknowledged || (key == "demo") != (loadedTenantKey == "demo")
+        let discarded = asked ? [] : editors.values.filter(\.isDirty).map(\.base.overview.name).sorted()
+        discardAcknowledged = false
+        connectionDidChange()
+        if !discarded.isEmpty {
+            notice = EditorModel.Alert(
+                kind: .info, title: "Unsaved Changes Discarded",
+                message: "The connection changed, so the unsaved changes in \(discarded.map { "“\($0)”" }.joined(separator: ", ")) were discarded.")
+        }
+        if demo.isOn { refresh() }
+    }
+
+    /// Clears everything loaded from the old tenant.
     func connectionDidChange() {
         refreshTask?.cancel()
+        loadedTenantKey = tenantKey
+        connectionGeneration += 1
         client = nil
         overviews = []
         details = [:]
@@ -271,8 +358,9 @@ final class AppModel {
 
         let listedIDs = Set(list.map(\.id))
         // Blueprints that disappeared from the server stay listed while they hold
-        // unsaved edits, so those edits can still be reviewed, saved or discarded.
-        let retained = editors.filter { listedIDs.contains($0.key) || $0.value.isDirty }
+        // unsaved edits, so those edits can still be reviewed, saved or discarded,
+        // or while an operation on them is running, so its result is shown.
+        let retained = editors.filter { listedIDs.contains($0.key) || $0.value.isDirty || $0.value.isBusy }
         for (id, editor) in editors where retained[id] == nil {
             editor.detachUndoHistory()
         }
@@ -322,13 +410,17 @@ final class AppModel {
         discoveryState = .finished(Date())
     }
 
-    /// Fetches one blueprint by ID, whether or not it contains Managed Preferences.
+    /// Fetches one Blueprint by ID, whether or not it contains Managed Preferences.
+    /// Nothing is stored when the connection changed while it was read.
     func fetchBlueprint(id: String) async throws {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let detail = try await currentService().detail(id: trimmed)
+        let service = try currentService()
+        let generation = connectionGeneration
+        let detail = try await service.detail(id: trimmed)
+        guard connectionGeneration == generation else { throw CancellationError() }
         store(detail)
-        // Make sure the fetched blueprint is visible even if it has no ManagedClient payload.
+        // Make sure the fetched Blueprint is visible even if it has no Managed Preferences payload.
         if preferenceDomains[detail.id] == nil { sidebarFilter = .all }
         selectedBlueprintID = detail.id
     }

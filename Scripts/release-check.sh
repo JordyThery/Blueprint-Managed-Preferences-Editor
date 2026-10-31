@@ -30,7 +30,7 @@ CREDENTIALS=(
 )
 DOMAIN="be.jordythery.blueprint-managed-preferences-editor"
 # The saved connections share the preferences file with window frames, so
-# only these settings are compared (JTKit 0.12.1).
+# only these settings are compared.
 FINGERPRINT_DEFAULTS=("$DOMAIN connectionProfiles" "$DOMAIN connectionProfiles.backup"
                       "$DOMAIN selectedConnectionProfileID" "$DOMAIN demoMode")
 FINGERPRINT_PATHS=("$HOME/Library/Application Support/Blueprint Managed Preferences Editor/Backups")

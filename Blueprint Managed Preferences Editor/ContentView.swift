@@ -7,10 +7,10 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(UpdateChecker.self) private var updates
     @Environment(\.openWindow) private var openWindow
-    @State private var isShowingFetchByID = false
 
     var body: some View {
         @Bindable var updates = updates
+        @Bindable var model = model
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 240, ideal: 300)
@@ -20,9 +20,15 @@ struct ContentView: View {
                     .id(id)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320)
             } else {
-                Text("Select a blueprint")
-                    .foregroundStyle(.secondary)
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 320)
+                // Without a connection the detail column says what to do; this one stays empty.
+                Group {
+                    if model.hasActiveConnection {
+                        ContentUnavailableView("Select a Blueprint", systemImage: "sidebar.left")
+                    } else {
+                        Color.clear
+                    }
+                }
+                .navigationSplitViewColumnWidth(min: 260, ideal: 320)
             }
         } detail: {
             detail
@@ -34,11 +40,11 @@ struct ContentView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
-                    isShowingFetchByID = true
+                    model.isShowingFetchByID = true
                 } label: {
                     Label("Fetch by ID", systemImage: "number")
                 }
-                .help("Fetch one blueprint by ID")
+                .help("Fetch one Blueprint by ID")
                 .disabled(!model.hasActiveConnection)
 
                 Button {
@@ -46,7 +52,7 @@ struct ContentView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .help("Discover blueprints that contain Managed Preferences")
+                .help("Discover Blueprints that contain Managed Preferences")
                 .disabled(model.isBusy || !model.hasActiveConnection)
 
                 Button {
@@ -57,22 +63,25 @@ struct ContentView: View {
                 .help("Show sign-ins and Jamf API calls (secrets redacted)")
             }
         }
-        .sheet(isPresented: $isShowingFetchByID) {
+        .sheet(isPresented: $model.isShowingFetchByID) {
             FetchByIDSheet()
         }
         .sheet(isPresented: $updates.isPresented) {
             UpdateView()
         }
-        .onChange(of: model.profileStore.selectedProfileID) {
-            model.connectionDidChange()
+        // A connection change clears the old tenant's Blueprints in the model
+        // (`AppModel.tenantDidChangeIfNeeded`). At launch in demo mode, the
+        // sample Blueprints load straight away.
+        .task { if model.demo.isOn && model.overviews.isEmpty { model.refresh() } }
+        .alert(
+            model.notice?.title ?? "",
+            isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } }),
+            presenting: model.notice
+        ) { _ in
+            Button("OK") {}
+        } message: { notice in
+            Text(notice.message)
         }
-        // Into or out of demo mode: another connection. The demo's sample
-        // Blueprints load straight away.
-        .onChange(of: model.demo.isOn) {
-            model.connectionDidChange()
-            if model.demo.isOn { model.refresh() }
-        }
-        .task { if model.demo.isOn { model.refresh() } }
         .confirmsConnectionSwitch(from: .mainWindow)
         .confirmsDemoModeSwitch(model.demo)
         .background(WindowEditedMarker(isEdited: model.hasUnsavedChanges))
@@ -110,7 +119,7 @@ struct ContentView: View {
             ContentUnavailableView(
                 "No Blueprint Selected",
                 systemImage: "doc.text.magnifyingglass",
-                description: Text("Refresh to discover blueprints, or fetch a known blueprint by ID.")
+                description: Text("Refresh to discover Blueprints, or fetch a known Blueprint by ID.")
             )
         }
     }
@@ -152,7 +161,7 @@ private struct ProfilePicker: View {
 
 extension AppModel {
     /// The active connection for JTKit's picker, menu and Connections tab.
-    /// Choosing another one while blueprint edits are unsaved asks first. In
+    /// Choosing another one while Blueprint edits are unsaved asks first. In
     /// demo mode the picker and menu show none chosen; choosing one there
     /// leaves demo mode. Settings › Connections keeps showing the saved choice.
     /// - Parameter whenAsking: runs when the question is shown, e.g. to
@@ -168,7 +177,7 @@ extension AppModel {
 
 extension View {
     /// "Switch connection and discard unsaved changes?" for a connection
-    /// chosen from `origin` while blueprint edits are unsaved.
+    /// chosen from `origin` while Blueprint edits are unsaved.
     func confirmsConnectionSwitch(from origin: AppModel.ConnectionSwitchOrigin) -> some View {
         modifier(ConnectionSwitchConfirmation(origin: origin))
     }
@@ -192,7 +201,7 @@ private struct ConnectionSwitchConfirmation: ViewModifier {
     }
 }
 
-/// Fetches a single blueprint by ID so its raw JSON can be inspected.
+/// Fetches a single Blueprint by ID so its raw JSON can be inspected.
 private struct FetchByIDSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -204,7 +213,7 @@ private struct FetchByIDSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Fetch Blueprint by ID")
                 .font(.headline)
-            Text("Loads GET /v1/blueprints/{id}, even if it contains no Managed Preferences payload.")
+            Text("Loads one Blueprint by ID, even if it has no Managed Preferences payload.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             TextField("Blueprint ID", text: $blueprintID)
@@ -239,6 +248,9 @@ private struct FetchByIDSheet: View {
             defer { isFetching = false }
             do {
                 try await model.fetchBlueprint(id: blueprintID)
+                dismiss()
+            } catch is CancellationError {
+                // The connection changed while reading: the Blueprint belongs to the old one.
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

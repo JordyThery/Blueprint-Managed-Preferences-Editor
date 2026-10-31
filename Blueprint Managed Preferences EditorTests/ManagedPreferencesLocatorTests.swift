@@ -7,7 +7,7 @@ import Testing
 struct ManagedPreferencesLocatorTests {
     @Test func findsPayloadAtExpectedLocation() throws {
         let detail = try JamfPlatform.BlueprintDetail(data: Data(sampleBlueprintJSON.utf8))
-        #expect(detail.containsManagedPreferences)
+        #expect(!detail.managedPreferencePayloads.isEmpty)
         let location = try #require(detail.managedPreferencePayloads.first)
         #expect(location.path.pathString == "steps[0].components[1].configuration.payloadContent[0]")
         #expect(location.payloadDisplayName == "MAU")
@@ -28,7 +28,7 @@ struct ManagedPreferencesLocatorTests {
 
     @Test func blueprintWithoutPayloadIsNotAMatch() throws {
         let detail = try JamfPlatform.BlueprintDetail(data: Data(#"{"id":"x","name":"n","steps":[]}"#.utf8))
-        #expect(!detail.containsManagedPreferences)
+        #expect(detail.managedPreferencePayloads.isEmpty)
     }
 }
 

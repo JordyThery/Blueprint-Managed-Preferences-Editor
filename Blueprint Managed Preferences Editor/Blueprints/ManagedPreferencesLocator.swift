@@ -3,7 +3,7 @@ import JTKit
 
 /// Where a `com.apple.ManagedClient.preferences` payload was found inside a blueprint.
 nonisolated struct ManagedPreferencesPayloadLocation: Hashable, Sendable, Identifiable {
-    /// Path from the blueprint root to the payloadContent item.
+    /// Path from the Blueprint root to the payloadContent item.
     let path: [LosslessJSON.PathComponent]
     /// The payloadContent item itself.
     let payload: LosslessJSON.Object
@@ -18,7 +18,7 @@ nonisolated struct ManagedPreferencesPayloadLocation: Hashable, Sendable, Identi
     var id: String { path.pathString }
 }
 
-/// Finds ManagedClient payloads without assuming the exact shape: it searches the whole
+/// Finds Managed Preferences payloads without assuming the exact shape: it searches the whole
 /// tree for objects whose `payloadType` is the ManagedClient type, then checks how
 /// well each match fits the expected structure. It never throws on unknown shapes.
 nonisolated enum ManagedPreferencesLocator {

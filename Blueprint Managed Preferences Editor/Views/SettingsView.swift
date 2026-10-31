@@ -40,7 +40,7 @@ extension AppModel {
         let results = await client.checkPermissions(Self.readChecks)
         if let problem = JamfPlatform.PermissionProblem(results) { throw problem }
         let page = try await JamfPlatform.Blueprints(client: client).listPage(page: 0, pageSize: 1)
-        let count = page.totalCount.map { "\($0) blueprint\($0 == 1 ? "" : "s")" } ?? "blueprint list OK"
+        let count = page.totalCount.map { counted($0, "Blueprint") } ?? "Blueprints readable"
         return "Connected · \(count)"
     }
 

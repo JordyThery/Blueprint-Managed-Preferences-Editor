@@ -194,7 +194,7 @@ final class DemoModeTests {
         }
         let app = try makeApp(server: server)
         let message = try await app.testConnection(profile, typedSecret: nil)
-        #expect(message.contains("3 blueprints"))
+        #expect(message == "Connected · 3 Blueprints")
         #expect(server.requests.allSatisfy { $0.url.host() == "eu.api.jamfcloud.com" })
         #expect(String(decoding: try #require(server.requests.first).body, as: UTF8.self).contains("real-secret"))
         #expect(app.demo.jamfPlatformServer.requestCount == 0)
