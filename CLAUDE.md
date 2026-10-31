@@ -1,5 +1,7 @@
 # Blueprint Managed Preferences Editor: instructions for Claude
 
+At the start of every conversation, run ../JTKit/Scripts/check-versions.sh (or fetch it from GitHub if ../JTKit isn’t there) and mention the result in one line if anything is out of date.
+
 Shared code and the standards for every app: see JTKit's CLAUDE.md and ROADMAP.md (github.com/JordyThery/JTKit, or ../JTKit in the workspace).
 
 ## What the app does
@@ -40,7 +42,7 @@ Extend JTKit instead of adding another copy. If another app needs one of the `Lo
 - **Only the edited payload may change.** The Blueprints API applies PATCH as a JSON merge-patch, which replaces arrays wholesale, so every save sends the complete `steps` array and nothing else. Everything except the edited Managed Preferences goes back byte for byte (`LosslessJSON` keeps key order and number text). Never reformat, re-sort or "clean up" JSON. The tests `savingOneEditedPayloadSendsEverythingElseBackByteForByte` (mock server) and `…InDemoMode` (JTKit's demo server) guard this; keep both passing.
 - **Save:** fetch again, check the Blueprint is unchanged since it was loaded (`updated`), back up, PATCH steps, reload. If it changed on the server, save nothing and warn.
 - **Restore:** the same check, then a fresh backup of the current state, then PATCH the backup's steps.
-- **A backup is written before every save and every restore.** Backups are never overwritten: write with `.withoutOverwriting` only (Foundation on macOS 27 traps when it is combined with `.atomic`). The Restore list sorts names numerically without ".json", so same-millisecond "-2" … "-10" backups list in order.
+- **A backup is written before every save and every restore.** Backups are never overwritten: write with `.withoutOverwriting` only, never combined with `.atomic`. The Restore list sorts names numerically without ".json", so same-millisecond "-2" … "-10" backups list in order.
 - Never send `divisionId`. A division-locked Blueprint is read-only from the start.
 - The allow-list permits only GET, `POST /auth/token`, Blueprint PATCH and deploy. No create, delete or undeploy. Don't widen it without Jordy.
 - Request bodies are never recorded in the activity log (JTKit's default, no opt-in), because Managed Preferences can contain licence keys and tokens. Responses are recorded only on errors, redacted.
@@ -54,6 +56,10 @@ Extend JTKit instead of adding another copy. If another app needs one of the `Lo
 - Scope is shown as device group IDs; the app doesn't read device groups (no `device-groups` permission needed).
 - After a save, a deployed Blueprint shows Out of Date until it is deployed again.
 - Required API client permissions: `blueprints:read`, `blueprints:update`, `blueprints:deploy`. Test Connection names a missing `blueprints:read`; write permissions can't be checked without writing.
+
+## Watchlist
+
+What this app waits for from Apple, Jamf or Microsoft, or must recheck: see WATCHLIST.md.
 
 ## Testing
 
