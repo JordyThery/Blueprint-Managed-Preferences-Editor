@@ -80,7 +80,7 @@ What this app waits for from Apple, Jamf or Microsoft, or must recheck: see WATC
 3. Build from `Blueprint Managed Preferences Editor.xcodeproj` against the published JTKit. Hardened Runtime stays on; the app is not sandboxed.
 4. Jordy does the Developer ID signing and notarization himself. Zip the notarized app he supplies with `ditto -c -k --keepParent` and attach it to `gh release create`, tagged `vX.Y.Z`.
 5. A shields release badge fetched before the release exists stays cached: purge GitHub’s camo cache after shields’ 5-minute cache has expired.
-6. Website: only when the app has its own page on jordythery.be and the release changes the app enough to make that page untrue or incomplete, update the page.
+6. Website: follow ../jordythery.be/CLAUDE.md, section “When an app is released”. Every release checks this app's card on apps.html, and its own page if it has one, against the released README and CHANGELOG, and changes them on a branch with a pull request. Jordy merges, which publishes the site.
 
 Before any of this, follow the release gate in JTKit/ROADMAP.md.
 
