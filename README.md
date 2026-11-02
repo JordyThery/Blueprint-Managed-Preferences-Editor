@@ -16,7 +16,7 @@ When Jamf Pro turns a classic configuration profile with an **Application & Cust
 
 Blueprint Managed Preferences Editor is a macOS app that uses that API for you. It finds every Blueprint with a Managed Preferences payload, lets you edit the payload in an outline editor, and saves your changes back. Deploying stays a separate, explicit step.
 
-![Blueprint Managed Preferences Editor showing the Blueprints that contain Managed Preferences, the preference domain of the selected Blueprint, and its keys in the outline editor](docs/screenshot.png)
+![Blueprint Managed Preferences Editor in Demo Mode, showing the sample Contoso Blueprints that contain Managed Preferences, the Microsoft AutoUpdate domain with its Forced, Often and Set-Once entries, and its keys in the outline editor](docs/screenshot.png)
 
 ## Installation
 
@@ -29,8 +29,8 @@ Download the latest notarized build from [Releases](https://github.com/JordyTher
 - **Outline editor**: in the style of Xcode’s property list editor, with String, Integer, Real, Boolean, Date, Data, Array and Dictionary types. Add, delete, duplicate, reorder and nest items. Values are validated as you edit.
 - **Import and export**: import domains, or replace one domain’s settings, from a `.plist`, a `.mobileconfig` (signed or unsigned) or pasted text, and export any domain as a `.plist`. A file without settings for the domain asks before its other settings are used, and domains with an unexpected shape are left alone.
 - **Review before saving**: a diff of old and new values for each domain and key, then **Save** or **Save & Deploy**.
-- **Undo and redo** for every edit. Unsaved changes are marked on the window and in the sidebar. **Discard Changes…**, **Reload from Server** and Quit ask before unsaved edits are lost.
-- **Multiple connections** to switch between tenants. Changing connections, or a connection’s Environment ID or client ID, clears the Blueprints of the previous one.
+- **Undo and redo** for every edit. Unsaved changes are marked on the window and in the sidebar. **Discard Changes…**, **Reload from Server** and Quit ask before unsaved edits are lost; Quit also asks while a save, deploy or restore is running.
+- **Multiple connections** to switch between tenants. Changing connections, changing the active connection’s region, Environment ID or client ID, or deleting it, clears the Blueprints of the previous one.
 - **Demo Mode**: try the app with sample Contoso Blueprints and no Jamf tenant. Turn it on in the connection picker or the Connection menu, or with **Try Demo Mode**. The picker reads “Contoso (Demo)” and window titles end in “— Demo”. Nothing is sent to a tenant and everything resets when the app quits.
 - **Settings**: **General** (appearance), **Connections** and **Updates**.
 - **Activity log and raw JSON**: every sign-in and API call is logged (Window › Activity Log, ⇧⌘L) with secrets redacted; request contents are never logged. The raw JSON view shows the Blueprint as received (**Pretty** or **Exact Response**) and, with unsaved edits, the **Pending PATCH Body** Save will send, each with **Copy** and **Save…**. Only GET requests, token requests, and Blueprint update and deploy requests are ever sent.
@@ -43,17 +43,17 @@ The Jamf Platform API applies Blueprint updates as a JSON merge-patch, and a mer
 - **Concurrent changes are caught.** Just before saving, restoring or deploying, the Blueprint is fetched again. If it changed on the server since you loaded it, nothing is changed or deployed and you’re warned.
 - **Every save and restore is backed up first.** The full Blueprint is written to `~/Library/Application Support/Blueprint Managed Preferences Editor/Backups/<Blueprint ID>/` (**Show Backups in Finder**), and **Restore from Backup** puts those steps back.
 - **Division-locked Blueprints are left alone.** `divisionId` is never sent. Blueprints assigned to a division are marked read-only.
-- **Deployment needs confirmation.** After a save the Blueprint shows *Out of Date* until you deploy it, and deploying asks for confirmation, showing the Blueprint name and its scope.
+- **Deployment needs confirmation.** After a save the Blueprint shows *Out of Date* until you deploy it, and deploying asks for confirmation, showing the Blueprint name and its scope. **Deploy…** is unavailable while edits are unsaved (**Save & Deploy…** in the review does both) and on division-locked Blueprints.
 
 ## Requirements
 
 - macOS 15 or later
-- A Jamf Platform API client (US, EU or APAC region) with the `blueprints:read`, `blueprints:update` and `blueprints:deploy` permissions
+- A Jamf Platform API client (US, EU or APAC region) with the `blueprints:read`, `blueprints:update` and `blueprints:deploy` permissions. **Test Connection** checks only `blueprints:read`; the write permissions can’t be checked without writing.
 - Your **Environment ID**: use **Load Environments** in Settings › Connections (organization-scope API clients), or copy it from the integration’s details in Jamf Account.
 
 ## Getting started
 
-1. Open **Settings** (⌘,) › **Connections**, add a connection, enter the region, client ID and client secret, choose the Environment ID with **Load Environments** (or paste it), and click **Test Connection**. To look around first, choose **Try Demo Mode** instead.
+1. Open **Settings** (⌘,) › **Connections**, add a connection, enter the region, client ID and client secret, choose the Environment ID with **Load Environments** (or paste it), and click **Test Connection**. To look around first, click **Try Demo Mode** in the main window, or choose Demo Mode in the connection picker or the Connection menu.
 2. Click **Refresh** (⌘R) to discover Blueprints with Managed Preferences.
 3. Select a Blueprint, then a domain, and edit its keys.
 4. Click **Save…** (⌘S), review the changes, and save. Deploy when you’re ready.
@@ -61,9 +61,9 @@ The Jamf Platform API applies Blueprint updates as a JSON merge-patch, and a mer
 ## Security
 
 - **Credentials** stay on your Mac. Client secrets are stored in the login Keychain; the other connection settings are stored in user defaults.
-- **Network**: the app talks only to `{region}.api.jamfcloud.com`, plus one daily request to GitHub asking whether a newer release exists. That request sends nothing else and can be turned off in Settings.
-- **Activity log**: kept in memory only, with tokens and secrets redacted. Request contents are never recorded, and responses only when the server reports an error. **Export for Bug Report…** hides serial numbers, emails and device names.
-- **Backups** contain the full Blueprint JSON as it was on the server, including any values in its Managed Preferences, such as license keys or tokens, but no Jamf credentials. They are stored unencrypted in your user Library, one per save and restore, and never deleted by the app: remove old ones yourself with **Show Backups in Finder**.
+- **Network**: the app talks only to `{region}.api.jamfcloud.com` (sign-in, Blueprints and, with **Load Environments**, the organization’s environment list), plus one daily request to GitHub asking whether a newer release exists. That request sends nothing else and can be turned off in Settings.
+- **Activity log**: kept in memory only, with tokens and secrets redacted. Request contents are never recorded, and responses only when the server reports an error. **Export for Bug Report…** replaces device identifiers (serial numbers, device names), usernames, emails and IP addresses with placeholders; **Export Unmasked…** keeps them.
+- **Backups** contain the full Blueprint JSON as it was on the server, including any values in its Managed Preferences, such as license keys or tokens, but no Jamf credentials. They are stored unencrypted in your user Library, one per save and restore, and never deleted by the app: remove old ones yourself with **Show Backups in Finder**. In Demo Mode, backups go to a temporary folder instead.
 - **No sandbox**: the app is not sandboxed, so backups are written to the exact path above. It runs with the Hardened Runtime.
 
 ## Known limitations
@@ -74,7 +74,9 @@ The Jamf Platform API applies Blueprint updates as a JSON merge-patch, and a mer
 
 ## Building
 
-Open `Blueprint Managed Preferences Editor.xcodeproj` in Xcode 27 or later and build the `Blueprint Managed Preferences Editor` scheme (⌘R). Run the tests with ⌘U. Depends on [JTKit](https://github.com/JordyThery/JTKit), Jordy’s own shared package; no third-party dependencies.
+Open `Blueprint Managed Preferences Editor.xcodeproj` in Xcode 27 or later and build the `Blueprint Managed Preferences Editor` scheme (⌘R). Run the tests with ⌘U.
+
+The app’s only package dependency is [JTKit](https://github.com/JordyThery/JTKit), the shared package of these apps. Resolving it also downloads Microsoft’s MSAL, which JTKit uses for Intune sign-in and which this app doesn’t link or ship.
 
 ## Support
 
