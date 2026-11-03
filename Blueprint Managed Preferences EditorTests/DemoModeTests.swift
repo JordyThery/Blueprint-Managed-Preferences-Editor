@@ -113,7 +113,7 @@ final class DemoModeTests {
         try editFirstPayload(editor)
         await editor.save(andDeploy: false)
 
-        #expect(editor.alert?.title == "Saved")
+        #expect(editor.resultTitle == "Saved")
         #expect(app.demo.jamfPlatformServer.patchCount == 1)
         let editedFirstPayload = firstPayload.replacingOccurrences(
             of: #""EnableCheckForUpdatesButton":false"#, with: #""EnableCheckForUpdatesButton":true"#)
@@ -149,12 +149,12 @@ final class DemoModeTests {
         let originalSteps = try storedSteps(app, id)
         try editFirstPayload(editor)
         await editor.save(andDeploy: true)
-        #expect(editor.alert?.title == "Saved and Deployment Started")
+        #expect(editor.resultTitle == "Saved and Deployment Started")
         #expect(app.demo.jamfPlatformServer.deployCount == 1)
 
         let backup = try #require(BackupStore.backups(for: id, root: editor.backupRoot).first)
         await editor.restore(from: backup)
-        #expect(editor.alert?.title == "Restored")
+        #expect(editor.resultTitle == "Restored")
         #expect(try storedSteps(app, id) == originalSteps, "the backup's steps, byte for byte")
         #expect(BackupStore.backups(for: id, root: app.backupRoot).count == 2, "a fresh backup before the restore")
         #expect(!FileManager.default.fileExists(atPath: realBackupRoot.path()))

@@ -23,9 +23,29 @@ final class AppModel {
     let profileStore: ProfileStore
     /// JTKit's activity log (Window › Activity Log, ⇧⌘L), filled by the Jamf client.
     let activityLog = ActivityLog()
-    /// JTKit's waits before a retry ("Jamf asked to wait 40 s"), shown with
-    /// Stop while a Blueprint is read, saved, deployed or restored.
-    let waits = RequestWaits()
+    /// What a client is for. Each has its own client and its own JTKit
+    /// `RequestWaits` (waits before a retry, "Jamf asked to wait 40 s"), so
+    /// Stop in one place ends only the waits shown there.
+    enum Purpose: CaseIterable {
+        /// Save, deploy, restore and reload in the editors.
+        case editing
+        /// Refresh and Fetch by ID.
+        case discovery
+        /// Test Connection and Load Environments in Settings.
+        case settings
+    }
+
+    let editorWaits = RequestWaits()
+    let discoveryWaits = RequestWaits()
+    let settingsWaits = RequestWaits()
+
+    func waits(for purpose: Purpose) -> RequestWaits {
+        switch purpose {
+        case .editing: editorWaits
+        case .discovery: discoveryWaits
+        case .settings: settingsWaits
+        }
+    }
     /// Where requests for real connections go: the network, or a fake server
     /// in tests. Also while demo mode is on (Test Connection in Settings).
     let session: URLSession
@@ -81,10 +101,12 @@ final class AppModel {
     /// Maximum number of detail GETs in flight during discovery.
     let maxConcurrentDetailRequests = 5
 
-    /// JTKit's client for the selected profile, kept while its credentials stay the same.
-    private var client: (credentials: PlatformCredentials, client: JamfPlatform.Client)?
-    /// The demo's client, one for the whole launch, like the demo server.
-    private var demoClient: JamfPlatform.Client?
+    /// JTKit's clients for the selected profile, one per purpose, kept while
+    /// its credentials stay the same.
+    private var clients: [Purpose: (credentials: PlatformCredentials, client: JamfPlatform.Client)] = [:]
+    /// The demo's clients, kept for the whole launch, like the demo server.
+    private var demoClients: [Purpose: JamfPlatform.Client] = [:]
+    private var demoBlueprintsAdded = false
     private var refreshTask: Task<Void, Never>?
     /// The tenant the loaded Blueprints and editors belong to (`tenantKey`).
     private var loadedTenantKey = ""
@@ -183,6 +205,10 @@ final class AppModel {
     func chooseConnection(_ profileID: UUID?, from origin: ConnectionSwitchOrigin) -> Bool {
         let leavesDemo = demo.isOn && origin == .mainWindow && profileID != nil
         guard profileID != profileStore.selectedProfileID || leavesDemo else { return false }
+        if profileID != nil, let refusal = switchRefusal {
+            report(refusal, from: origin)
+            return false
+        }
         if let profileID, hasUnsavedChanges {
             pendingConnectionSwitch = PendingConnectionSwitch(profileID: profileID, origin: origin)
             return true
@@ -191,10 +217,48 @@ final class AppModel {
         return false
     }
 
+    /// Why the connection or Demo Mode can't change now: a save, deploy,
+    /// restore or reload is running, and its backup and result belong to
+    /// the connection in use. Nil when nothing runs.
+    var switchRefusal: EditorModel.Alert? {
+        guard let running = editors.values.first(where: \.isBusy) else { return nil }
+        return EditorModel.Alert(
+            kind: .info, title: "Wait for \(running.operation.noun) to Finish",
+            message: "“\(running.base.overview.name)” is still being \(running.operation.pastParticiple) on the connection in use. Switch the connection or Demo Mode once it has finished, so its backup and its result stay with this connection.")
+    }
+
+    /// Shown in Settings when a switch is refused there (the main window
+    /// shows `notice`).
+    var settingsNotice: EditorModel.Alert?
+
+    private func report(_ alert: EditorModel.Alert, from origin: ConnectionSwitchOrigin) {
+        switch origin {
+        case .mainWindow: notice = alert
+        case .settings: settingsNotice = alert
+        }
+    }
+
+    /// Demo Mode on or off from the picker, the Connection menu or Try Demo
+    /// Mode: refused while an operation runs, else JTKit's switch (which
+    /// asks first with unsaved edits). Returns true when it asks.
+    @discardableResult
+    func requestDemoSwitch(to isOn: Bool) -> Bool {
+        guard isOn != demo.isOn else { return false }
+        if let refusal = switchRefusal {
+            notice = refusal
+            return false
+        }
+        return demo.requestSwitch(to: isOn)
+    }
+
     /// "Discard and Switch": makes the waiting connection the active one.
     func confirmConnectionSwitch() {
         guard let pending = pendingConnectionSwitch else { return }
         pendingConnectionSwitch = nil
+        if let refusal = switchRefusal {
+            report(refusal, from: pending.origin)
+            return
+        }
         discardAcknowledged = true
         select(pending.profileID)
         tenantDidChangeIfNeeded()
@@ -209,42 +273,46 @@ final class AppModel {
     /// The client for the selected profile, rebuilt when its credentials
     /// change. In demo mode the demo's, which reads no saved connection or
     /// Keychain item and reaches only the demo server.
-    func currentClient() throws -> JamfPlatform.Client {
+    func currentClient(for purpose: Purpose = .editing) throws -> JamfPlatform.Client {
         // Never a client for another tenant while the old tenant's Blueprints are loaded.
         tenantDidChangeIfNeeded()
-        if demo.isOn { return try currentDemoClient() }
+        if demo.isOn { return try currentDemoClient(for: purpose) }
         guard let profile = profileStore.selectedProfile,
               let credentials = try profileStore.credentials(for: profile) else {
             throw APIError.missingCredentials
         }
-        if let client, client.credentials == credentials {
+        if let client = clients[purpose], client.credentials == credentials {
             return client.client
         }
-        let newClient = try makeClient(credentials: credentials)
-        client = (credentials, newClient)
+        let newClient = try makeClient(credentials: credentials, purpose: purpose)
+        clients[purpose] = (credentials, newClient)
         return newClient
     }
 
     /// The Blueprints API for the selected profile.
-    func currentService() throws -> JamfPlatform.Blueprints {
-        JamfPlatform.Blueprints(client: try currentClient())
+    func currentService(for purpose: Purpose = .editing) throws -> JamfPlatform.Blueprints {
+        JamfPlatform.Blueprints(client: try currentClient(for: purpose))
     }
 
     /// A client for a real connection, on the real network, also while demo
     /// mode is on (Test Connection).
-    func makeClient(credentials: PlatformCredentials) throws -> JamfPlatform.Client {
-        try PlatformAPIClient.make(credentials: credentials, session: session, log: activityLog, waits: waits)
+    func makeClient(credentials: PlatformCredentials, purpose: Purpose) throws -> JamfPlatform.Client {
+        try PlatformAPIClient.make(credentials: credentials, session: session, log: activityLog,
+                                   waits: waits(for: purpose))
     }
 
     /// The demo's client, with the app's allow-list; the first one also adds
     /// the app's sample Blueprints (`DemoBlueprints`) to the demo server.
-    private func currentDemoClient() throws -> JamfPlatform.Client {
-        if let demoClient { return demoClient }
-        demo.jamfPlatformServer.add(DemoBlueprints.all)
+    private func currentDemoClient(for purpose: Purpose) throws -> JamfPlatform.Client {
+        if let client = demoClients[purpose] { return client }
+        if !demoBlueprintsAdded {
+            demo.jamfPlatformServer.add(DemoBlueprints.all)
+            demoBlueprintsAdded = true
+        }
         let source = demo.jamfPlatform()
         let made = try PlatformAPIClient.make(connection: source.connection, secret: source.secret,
-                                              session: source.session, log: activityLog, waits: waits)
-        demoClient = made
+                                              session: source.session, log: activityLog, waits: waits(for: purpose))
+        demoClients[purpose] = made
         return made
     }
 
@@ -297,7 +365,7 @@ final class AppModel {
         refreshTask?.cancel()
         loadedTenantKey = tenantKey
         connectionGeneration += 1
-        client = nil
+        clients = [:]
         overviews = []
         details = [:]
         detailErrors = [:]
@@ -341,7 +409,7 @@ final class AppModel {
     private func runDiscovery() async {
         let service: JamfPlatform.Blueprints
         do {
-            service = try currentService()
+            service = try currentService(for: .discovery)
         } catch {
             discoveryState = .failed(error.localizedDescription)
             return
@@ -423,7 +491,7 @@ final class AppModel {
     func fetchBlueprint(id: String) async throws {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let service = try currentService()
+        let service = try currentService(for: .discovery)
         let generation = connectionGeneration
         let detail: JamfPlatform.BlueprintDetail
         do {

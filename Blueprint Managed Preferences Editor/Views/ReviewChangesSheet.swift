@@ -4,6 +4,8 @@ import SwiftUI
 /// Shows old and new values per domain and key before saving.
 struct ReviewChangesSheet: View {
     let editor: EditorModel
+    /// Opened from Blueprint › Save & Deploy…: asks the deploy question first.
+    var startsWithDeploy = false
     @Environment(\.dismiss) private var dismiss
     @State private var isConfirmingDeploy = false
 
@@ -81,6 +83,7 @@ struct ReviewChangesSheet: View {
             .padding()
         }
         .frame(width: 760, height: 540)
+        .onAppear { if startsWithDeploy && !changes.isEmpty { isConfirmingDeploy = true } }
         .confirmationDialog(
             "Save and deploy “\(editor.base.overview.name)”?",
             isPresented: $isConfirmingDeploy,

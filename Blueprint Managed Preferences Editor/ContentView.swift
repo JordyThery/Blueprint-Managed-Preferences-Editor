@@ -13,7 +13,7 @@ struct ContentView: View {
         @Bindable var model = model
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 240, ideal: 300)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 300)
         } content: {
             if let id = model.selectedBlueprintID {
                 BlueprintColumnView(blueprintID: id)
@@ -32,6 +32,7 @@ struct ContentView: View {
             }
         } detail: {
             detail
+                .navigationSplitViewColumnWidth(min: 380, ideal: 700)
         }
         .navigationTitle("Blueprint Managed Preferences Editor")
         .toolbar {
@@ -85,7 +86,8 @@ struct ContentView: View {
         .confirmsConnectionSwitch(from: .mainWindow)
         .confirmsDemoModeSwitch(model.demo)
         .background(WindowEditedMarker(isEdited: model.hasUnsavedChanges))
-        .frame(minWidth: 1100, minHeight: 600)
+        // The three columns at their narrowest (220 + 260 + 380).
+        .frame(minWidth: 860, minHeight: 520)
     }
 
     @ViewBuilder
@@ -113,7 +115,7 @@ struct ContentView: View {
                 Text("Add a Jamf Platform API connection in Settings, or try the app with sample data.")
             } actions: {
                 SettingsLink { Text("Open Settings…") }
-                Button("Try Demo Mode") { model.demo.requestSwitch(to: true) }
+                Button("Try Demo Mode") { model.requestDemoSwitch(to: true) }
             }
         } else {
             ContentUnavailableView(
@@ -154,8 +156,22 @@ private struct ProfilePicker: View {
             label: model.demo.isOn ? .demo(.demoJamfPlatform) : nil,
             help: model.demo.isOn ? DemoMode.helpText : nil
         ) {
-            DemoModeToggle(demo: model.demo)
+            AppDemoModeToggle(model: model)
         }
+    }
+}
+
+/// JTKit's Demo Mode item, through `AppModel.requestDemoSwitch`: refused
+/// with a sentence while a save, deploy, restore or reload runs.
+struct AppDemoModeToggle: View {
+    let model: AppModel
+    var whenAsking: () -> Void = {}
+
+    var body: some View {
+        Toggle(DemoMode.title, isOn: Binding(
+            get: { model.demo.isOn },
+            set: { if model.requestDemoSwitch(to: $0) { whenAsking() } }
+        ))
     }
 }
 
@@ -235,7 +251,7 @@ private struct FetchByIDSheet: View {
             HStack {
                 if isFetching {
                     ProgressView().controlSize(.small)
-                    RetryWaitStatus()
+                    RetryWaitStatus(waits: model.discoveryWaits)
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -268,7 +284,11 @@ private struct FetchByIDSheet: View {
 }
 
 #Preview {
-    let model = AppModel()
+    // Demo mode with in-memory connections: never the saved ones or the Keychain.
+    let model = AppModel(profileStore: ProfileStore(defaults: DemoMode.sandboxDefaults(), secrets: SandboxSecretStore()),
+                         backupRoot: FileManager.default.temporaryDirectory,
+                         demo: DemoMode(key: AppModel.demoModeKey, defaults: DemoMode.sandboxDefaults(),
+                                        arguments: [DemoMode.launchArgument, "YES"]))
     ContentView()
         .environment(model)
         .environment(model.updates)

@@ -73,12 +73,12 @@ private struct DiscoveryStatusView: View {
             case .listing:
                 ProgressView().controlSize(.small)
                 Text("Listing Blueprints…")
-                RetryWaitStatus()
+                RetryWaitStatus(waits: model.discoveryWaits)
             case .fetchingDetails(let completed, let total):
                 ProgressView(value: Double(completed), total: Double(max(total, 1)))
                     .frame(width: 80)
                 Text("Reading \(completed) of \(total)")
-                RetryWaitStatus()
+                RetryWaitStatus(waits: model.discoveryWaits)
             case .finished(let date):
                 Image(systemName: "checkmark.circle")
                     .foregroundStyle(.secondary)

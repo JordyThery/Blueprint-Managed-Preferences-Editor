@@ -77,7 +77,7 @@ final class SaveTests {
 
         await edited.save(andDeploy: false)
 
-        #expect(edited.alert?.title == "Saved")
+        #expect(edited.resultTitle == "Saved")
         // Read to check nothing changed, save, read the new version.
         #expect(apiRequests(server).map(\.method) == ["GET", "PATCH", "GET"])
         let patch = try #require(apiRequests(server).first { $0.method == "PATCH" })

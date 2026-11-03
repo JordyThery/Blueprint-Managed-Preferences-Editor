@@ -20,8 +20,25 @@ struct ConnectionsTab: View {
             test: { profile, typed in try await model.testConnection(profile, typedSecret: typed[.main]) },
             environments: { profile, typed in try await model.environments(for: profile, typedSecret: typed[.main]) }
         )
+        .safeAreaInset(edge: .bottom) {
+            // Test Connection and Load Environments wait here, with their own Stop.
+            HStack {
+                RetryWaitStatus(waits: model.settingsWaits)
+                Spacer()
+            }
+            .padding(.horizontal)
+        }
         .confirmsConnectionSwitch(from: .settings)
         .onChange(of: store.profiles) { store.profilesDidChange() }
+        .alert(
+            model.settingsNotice?.title ?? "",
+            isPresented: Binding(get: { model.settingsNotice != nil }, set: { if !$0 { model.settingsNotice = nil } }),
+            presenting: model.settingsNotice
+        ) { _ in
+            Button("OK") {}
+        } message: { notice in
+            Text(notice.message)
+        }
     }
 }
 
@@ -37,7 +54,7 @@ extension AppModel {
     /// that can't be read is reported as such.
     func testConnection(_ profile: ConnectionProfile, typedSecret: String?) async throws -> String {
         let secret = try typedSecret ?? profileStore.secret(for: profile) ?? ""
-        let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret))
+        let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret), purpose: .settings)
         return try await client.testConnection(checks: Self.readChecks) {
             let page = try await JamfPlatform.Blueprints(client: client).listPage(page: 0, pageSize: 1)
             return page.totalCount.map { counted($0, "Blueprint") } ?? "Blueprints readable"
@@ -51,7 +68,7 @@ extension AppModel {
         let credentials = PlatformCredentials(profile: profile, secret: secret)
         return try await JamfPlatform.environments(
             for: credentials.connection, secret: { secret },
-            recorder: PlatformAPIClient.recorder(for: credentials, session: session, log: activityLog, waits: waits),
+            recorder: PlatformAPIClient.recorder(for: credentials, session: session, log: activityLog, waits: settingsWaits),
             permits: PlatformAPIClient.permits)
     }
 }

@@ -89,8 +89,7 @@ final class LiveUITests: JTKitUITestCase {
         tap(sheet.buttons["Save"], timeout: 10)
         let saved = app.descendants(matching: .any)
             .matching(NSPredicate(format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "“\(name)” was saved", "“\(name)” was saved")).firstMatch
-        XCTAssertTrue(saved.waitForExistence(timeout: 60), "The save didn't finish with “Saved”")
-        tap(dialogButton("OK"))
+        XCTAssertTrue(saved.waitForExistence(timeout: 60), "The save didn't finish with “Saved” in the window")
         waitForNetwork()
         recordLive(step: step("open the Blueprint in the app, change the value, save"), passed: true)
 

@@ -76,6 +76,8 @@ struct DomainEditorView: View {
             } message: { pending in
                 Text("\(pending.fileName) has no settings for \(domain.name). Its settings for \(pending.imported.name) would replace this domain’s settings.")
             }
+            .onAppear { exportIfRequested(domain) }
+            .onChange(of: editor.request) { exportIfRequested(domain) }
             .sheet(isPresented: $isPasting) {
                 PastePlistSheet { nodes in
                     if let entry = editor.currentEntry(of: domain) { replaceSettings(entry: entry, with: nodes) }
@@ -84,6 +86,13 @@ struct DomainEditorView: View {
         } else {
             ContentUnavailableView("Domain Not Found", systemImage: "questionmark.folder")
         }
+    }
+
+    /// Blueprint › Export Domain… in the menu bar.
+    private func exportIfRequested(_ domain: PreferenceDomain) {
+        guard editor.request == .exportDomain else { return }
+        editor.request = nil
+        if let entry = editor.currentEntry(of: domain) { export(domain: domain, entry: entry) }
     }
 
     // MARK: Header
@@ -102,12 +111,12 @@ struct DomainEditorView: View {
                         get: { entry.id },
                         set: { editor.selectedEntryIDs[domain.id] = $0 }
                     )) {
-                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, item in
-                            Text("\(item.mode) #\(index + 1)").tag(item.id)
+                        ForEach(entries) { item in
+                            Text(Self.entryName(item, in: entries)).tag(item.id)
                         }
                     }
                     .fixedSize()
-                    .help("This domain has several entries for one mode; choose which to edit")
+                    .help("This domain has several entries; choose which one to edit")
                 }
                 Picker("Management", selection: Binding(
                     get: { entry.mode },
@@ -121,6 +130,14 @@ struct DomainEditorView: View {
             }
         }
         .padding(12)
+    }
+
+    /// The entry's mode, e.g. "Set-Once"; with several entries of one mode
+    /// "Forced (1 of 2)".
+    static func entryName(_ entry: MCXEntry, in entries: [MCXEntry]) -> String {
+        let sameMode = entries.filter { $0.mode == entry.mode }
+        guard sameMode.count > 1, let index = sameMode.firstIndex(where: { $0.id == entry.id }) else { return entry.mode }
+        return "\(entry.mode) (\(index + 1) of \(sameMode.count))"
     }
 
     private func modes(including current: String) -> [String] {
@@ -288,7 +305,7 @@ struct DomainEditorView: View {
                 // A single .plist is named after its file, so it rarely matches: ask first.
                 otherDomain = OtherDomainImport(imported: match, fileName: fileName)
             case .none:
-                message = ImportMessage(title: "Nothing Imported", text: "No settings were found in \(fileName).")
+                editor.show(EditorModel.Status(title: "Nothing Imported", message: "No settings were found in \(fileName)."))
             }
         } catch {
             message = ImportMessage(title: "Import Failed", text: error.localizedDescription)
@@ -297,9 +314,9 @@ struct DomainEditorView: View {
 
     private func replace(domain: PreferenceDomain, entry: MCXEntry, with match: ImportedDomain, fileName: String) {
         if replaceSettings(entry: entry, with: match.settings) {
-            message = ImportMessage(title: "Imported", text: "Replaced the settings of \(domain.name) with \(counted(match.settings.count, "key")) from \(fileName). Use Undo to revert.")
+            editor.show(EditorModel.Status(title: "Imported", message: "Replaced the settings of \(domain.name) with \(counted(match.settings.count, "key")) from \(fileName). Use Undo to revert."))
         } else {
-            message = ImportMessage(title: "Nothing Imported", text: "\(fileName) matches the current settings; nothing changed.")
+            editor.show(EditorModel.Status(title: "Nothing Imported", message: "\(fileName) matches the current settings; nothing changed."))
         }
     }
 

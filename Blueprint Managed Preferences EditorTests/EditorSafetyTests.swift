@@ -98,8 +98,8 @@ final class EditorSafetyTests {
 
         #expect(methods(server) == ["GET"], "no deploy request")
         #expect(editor.alert?.kind == .conflict)
-        #expect(editor.alert?.message.contains("Nothing was deployed.") == true)
-        #expect(editor.alert?.message.contains("2026-01-02T09:31") == false, "times are formatted")
+        #expect(editor.resultMessage?.contains("Nothing was deployed.") == true)
+        #expect(editor.resultMessage?.contains("2026-01-02T09:31") == false, "times are formatted")
         withExtendedLifetime(app) {}
     }
 
@@ -117,7 +117,7 @@ final class EditorSafetyTests {
         await editor.deploy()
 
         #expect(methods(server) == ["GET", "POST", "GET"])
-        #expect(editor.alert?.title == "Deployment Started")
+        #expect(editor.resultTitle == "Deployment Started")
         withExtendedLifetime(app) {}
     }
 
@@ -135,7 +135,7 @@ final class EditorSafetyTests {
 
         #expect(methods(server) == ["GET"], "no deploy request")
         #expect(editor.alert?.kind == .conflict)
-        #expect(editor.alert?.message.contains("Nothing was deployed.") == true)
+        #expect(editor.resultMessage?.contains("Nothing was deployed.") == true)
         withExtendedLifetime(app) {}
     }
 
@@ -152,14 +152,14 @@ final class EditorSafetyTests {
         let (app, editor) = try makeApp(server)
 
         let deploy = Task { await editor.deploy() }
-        await waitUntil { app.waits.statusText != nil }
-        #expect(app.waits.statusText?.contains("40 s") == true)
-        app.waits.cancelAll()
+        await waitUntil { app.editorWaits.statusText != nil }
+        #expect(app.editorWaits.statusText?.contains("40 s") == true)
+        app.editorWaits.cancelAll()
         await deploy.value
 
         #expect(!methods(server).contains("POST"), "no deploy request")
-        #expect(editor.alert?.title == "Deploy Stopped")
-        #expect(editor.alert?.message.contains("nothing was deployed") == true)
+        #expect(editor.resultTitle == "Deploy Stopped")
+        #expect(editor.resultMessage?.contains("nothing was deployed") == true)
         #expect(!editor.isBusy)
     }
 
@@ -178,14 +178,119 @@ final class EditorSafetyTests {
         try edit(editor)
 
         let save = Task { await editor.save(andDeploy: false) }
-        await waitUntil { app.waits.statusText != nil }
-        app.waits.cancelAll()
+        await waitUntil { app.editorWaits.statusText != nil }
+        app.editorWaits.cancelAll()
         await save.value
 
         #expect(methods(server) == ["GET", "PATCH"], "not sent again")
-        #expect(editor.alert?.title == "Save Stopped")
-        #expect(editor.alert?.message.contains("may have reached Jamf") == true)
+        #expect(editor.resultTitle == "Save Stopped")
+        #expect(editor.resultMessage?.contains("may have reached Jamf") == true)
         #expect(editor.isDirty, "the edits are kept")
+    }
+
+    /// The pre-deploy read fails (404): nothing was sent.
+    @Test func aFailedReadBeforeTheDeploySaysNothingWasDeployed() async throws {
+        let server = MockServer { request in
+            request.path == "/auth/token" ? Self.token : Self.notFound
+        }
+        let (app, editor) = try makeApp(server)
+
+        await editor.deploy()
+
+        #expect(methods(server) == ["GET"])
+        #expect(editor.resultTitle == "Deploy Failed")
+        #expect(editor.resultMessage?.hasPrefix("Nothing was deployed.") == true)
+        withExtendedLifetime(app) {}
+    }
+
+    /// Stop while the deploy request waits after a 429: it may have started.
+    @Test func stoppingAWaitOfTheDeployRequestSaysItMayHaveStarted() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, emailBlueprintJSON)
+            case ("POST", Self.blueprintPath + "/deploy"): .json(429, "{}", headers: ["Retry-After": "40"])
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+
+        let deploy = Task { await editor.deploy() }
+        await waitUntil { app.editorWaits.statusText != nil }
+        app.editorWaits.cancelAll()
+        await deploy.value
+
+        #expect(methods(server) == ["GET", "POST"], "not sent again")
+        #expect(editor.resultTitle == "Deploy Failed")
+        #expect(editor.resultMessage?.contains("may have started anyway") == true)
+    }
+
+    /// A deploy refused for a division marks the Blueprint read-only, as Save does.
+    @Test func aDivisionRefusalOnDeployMakesTheBlueprintReadOnly() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, emailBlueprintJSON)
+            default: .json(409, #"{"httpStatus":409,"errors":[{"code":"DIVISION_PATCH_NOT_ALLOWED"}]}"#)
+            }
+        }
+        let (app, editor) = try makeApp(server)
+
+        await editor.deploy()
+
+        #expect(editor.resultTitle == "Blueprint Is Read-Only")
+        #expect(app.isReadOnly(Self.blueprintID))
+        #expect(!editor.canDeploy)
+    }
+
+    /// Stop during the reload after a successful save: a plain sentence,
+    /// and the save stays saved.
+    @Test func stoppingTheReloadAfterASaveKeepsItSaved() async throws {
+        let script = ServerScript()
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): return Self.token
+            case ("GET", Self.blueprintPath):
+                return script.count("GET") == 1 ? .json(200, emailBlueprintJSON) : .json(429, "{}", headers: ["Retry-After": "40"])
+            case ("PATCH", Self.blueprintPath): return Self.noContent
+            default: return .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        let save = Task { await editor.save(andDeploy: false) }
+        await waitUntil { app.editorWaits.statusText != nil }
+        app.editorWaits.cancelAll()
+        await save.value
+
+        #expect(editor.resultTitle == "Saved, Not Reloaded")
+        #expect(editor.resultMessage?.contains("you stopped waiting for Jamf before it was reloaded") == true)
+        #expect(editor.resultMessage?.contains("CancellationError") == false)
+        #expect(!editor.isDirty, "the save stays saved")
+    }
+
+    /// Stop while the restore's PATCH waits: the change may have reached Jamf.
+    @Test func stoppingAWaitDuringTheRestoreSaysItMayHaveReachedJamf() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, emailBlueprintJSON)
+            case ("PATCH", Self.blueprintPath): .json(503, "{}", headers: ["Retry-After": "40"])
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        let backup = try BackupStore.write(editor.base, root: backupRoot)
+
+        let restore = Task { await editor.restore(from: BlueprintBackup(url: backup, blueprintID: Self.blueprintID, date: Date(), size: 0)) }
+        await waitUntil { app.editorWaits.statusText != nil }
+        app.editorWaits.cancelAll()
+        await restore.value
+
+        #expect(methods(server) == ["GET", "PATCH"])
+        #expect(editor.resultTitle == "Restore Stopped")
+        #expect(editor.resultMessage?.contains("may have reached Jamf") == true)
     }
 
     // MARK: Duplicate domains (finding 2)
@@ -282,9 +387,9 @@ final class EditorSafetyTests {
 
     // MARK: Connection changes (findings 4, 5, 10)
 
-    /// A save in flight while the user switches connection: its result shows
-    /// in the main window and nothing of the old tenant reaches the new one.
-    @Test func aSaveInFlightDuringAConnectionSwitchStaysWithTheOldConnection() async throws {
+    /// Switching the connection or Demo Mode while a save runs is refused,
+    /// with a sentence saying why; the save finishes on its own connection.
+    @Test func switchingWhileASaveRunsIsRefused() async throws {
         let script = ServerScript()
         let server = MockServer { request in
             switch (request.method, request.path) {
@@ -301,17 +406,247 @@ final class EditorSafetyTests {
 
         let save = Task { await editor.save(andDeploy: false) }
         await waitUntil { server.requests.contains { $0.method == "PATCH" } }
-        #expect(app.chooseConnection(otherProfile.id, from: .mainWindow), "unsaved edits ask first")
-        app.confirmConnectionSwitch()
-        #expect(app.editors.isEmpty && app.overviews.isEmpty)
+        #expect(!app.chooseConnection(otherProfile.id, from: .mainWindow), "nothing to confirm: refused")
+        #expect(app.pendingConnectionSwitch == nil)
+        #expect(app.profileStore.selectedProfileID == profile.id)
+        #expect(app.notice?.title == "Wait for the Save to Finish")
+        #expect(app.notice?.message.contains("is still being saved") == true)
+        app.notice = nil
+        #expect(!app.requestDemoSwitch(to: true))
+        #expect(!app.demo.isOn)
+        #expect(app.notice?.title == "Wait for the Save to Finish")
+        #expect(!app.chooseConnection(otherProfile.id, from: .settings))
+        #expect(app.settingsNotice?.title == "Wait for the Save to Finish")
+        script.patchGate.signal()
+        await save.value
+
+        #expect(editor.status?.title == "Saved")
+        #expect(app.editors[Self.blueprintID] === editor, "still on the same connection")
+    }
+
+    /// Finding 1: the backup folder is decided when Save starts. Demo Mode
+    /// turned on during the save's wait (refused through the app; here set
+    /// directly, as a change nothing could refuse) doesn't move the backup
+    /// of the real Blueprint into the demo's temporary folder.
+    @Test func aSaveKeepsTheRealBackupFolderWhenDemoModeTurnsOnDuringItsWait() async throws {
+        let script = ServerScript()
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): return Self.token
+            case ("GET", Self.blueprintPath):
+                return script.count("GET") == 1 ? .json(503, "{}", headers: ["Retry-After": "1"]) : .json(200, emailBlueprintJSON)
+            case ("PATCH", Self.blueprintPath): return Self.noContent
+            default: return .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        let save = Task { await editor.save(andDeploy: false) }
+        await waitUntil { app.editorWaits.statusText != nil }
+        #expect(!app.requestDemoSwitch(to: true), "refused while the save waits")
+        #expect(!app.demo.isOn)
+        app.demo.isOn = true
+        await save.value
+
+        #expect(methods(server).contains("PATCH"))
+        #expect(BackupStore.backups(for: Self.blueprintID, root: backupRoot).count == 1, "the backup is in the real folder")
+        #expect(BackupStore.backups(for: Self.blueprintID, root: app.backupRoot).isEmpty, "none in the demo's folder")
+        #expect(app.backupRoot != backupRoot)
+        #expect(app.notice?.title == "Saved", "reported in the main window: the connection changed")
+    }
+
+    /// A save in flight while the active connection's Environment ID is
+    /// edited in Settings (a change that can't be refused): its result shows
+    /// in the main window and nothing of the old tenant reaches the new one.
+    @Test func aSaveInFlightDuringATenantChangeStaysWithTheOldConnection() async throws {
+        let script = ServerScript()
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): return Self.token
+            case ("GET", Self.blueprintPath): return .json(200, emailBlueprintJSON)
+            case ("PATCH", Self.blueprintPath):
+                _ = script.patchGate.wait(timeout: .now() + 10)
+                return Self.noContent
+            default: return .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        let save = Task { await editor.save(andDeploy: false) }
+        await waitUntil { server.requests.contains { $0.method == "PATCH" } }
+        var edited = profile
+        edited.environmentID = "5f1e2d3c-4b5a-4968-8776-655443322112"
+        try app.profileStore.connections.save(edited)
+        await waitUntil { app.editors.isEmpty }
         script.patchGate.signal()
         await save.value
 
         #expect(app.overviews.isEmpty, "the old tenant's Blueprint isn't listed under the new one")
         #expect(app.details.isEmpty && app.editors.isEmpty)
-        #expect(editor.alert == nil)
+        #expect(editor.alert == nil && editor.status == nil)
         #expect(app.notice?.title == "Saved")
         #expect(app.notice?.message.contains("before the connection changed") == true)
+    }
+
+    /// Each place has its own waits: Stop in Settings doesn't end a save's wait.
+    @Test func stopEndsOnlyTheWaitsOfItsOwnPlace() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(503, "{}", headers: ["Retry-After": "40"])
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        let save = Task { await editor.save(andDeploy: false) }
+        await waitUntil { app.editorWaits.statusText != nil }
+        #expect(app.discoveryWaits.statusText == nil && app.settingsWaits.statusText == nil)
+        app.settingsWaits.cancelAll()
+        app.discoveryWaits.cancelAll()
+        #expect(app.editorWaits.statusText != nil, "the save still waits")
+        app.editorWaits.cancelAll()
+        await save.value
+        #expect(editor.status?.title == "Save Stopped")
+    }
+
+    // MARK: What Save, Restore and Deploy compare (review finding 2)
+
+    nonisolated private static let widenedScopeJSON = emailBlueprintJSON.replacingOccurrences(
+        of: #""deviceGroups":["#, with: #""deviceGroups":["22222222-2222-4222-8222-222222222222","#)
+    nonisolated private static let changedStepsJSON = emailBlueprintJSON.replacingOccurrences(
+        of: #""PII_And_Intelligent_Services_Preference":true"#, with: #""PII_And_Intelligent_Services_Preference":false"#)
+    nonisolated private static let otherStateJSON = emailBlueprintJSON.replacingOccurrences(
+        of: #""deploymentState":{"state":"DEPLOYED""#, with: #""deploymentState":{"state":"OUT_OF_DATE""#)
+
+    /// Save sends only the steps: a scope someone else changed doesn't stop it.
+    @Test func saveGoesThroughAfterAScopeOnlyChange() async throws {
+        #expect(Self.widenedScopeJSON != emailBlueprintJSON)
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, Self.widenedScopeJSON)
+            case ("PATCH", Self.blueprintPath): Self.noContent
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        await editor.save(andDeploy: false)
+
+        #expect(methods(server) == ["GET", "PATCH", "GET"])
+        #expect(editor.status?.title == "Saved")
+        withExtendedLifetime(app) {}
+    }
+
+    /// A change of the steps on the server stops Save, with the same
+    /// `updated` time too, and the message says the steps changed.
+    @Test func saveIsRefusedAfterAStepsChange() async throws {
+        #expect(Self.changedStepsJSON != emailBlueprintJSON)
+        let server = MockServer { request in
+            request.path == "/auth/token" ? Self.token : .json(200, Self.changedStepsJSON)
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        await editor.save(andDeploy: false)
+
+        #expect(methods(server) == ["GET"], "nothing sent")
+        #expect(editor.alert?.kind == .conflict)
+        #expect(editor.resultMessage?.contains("Its steps") == true)
+        #expect(editor.resultMessage?.contains("Nothing was changed.") == true)
+        #expect(BackupStore.backups(for: Self.blueprintID, root: backupRoot).isEmpty)
+        withExtendedLifetime(app) {}
+    }
+
+    /// A newer `updated` time says when, not two identical times.
+    @Test func aChangedUpdatedTimeIsNamed() async throws {
+        let server = MockServer { request in
+            request.path == "/auth/token" ? Self.token : .json(200, Self.changedJSON)
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        await editor.save(andDeploy: false)
+
+        #expect(editor.alert?.kind == .conflict)
+        #expect(editor.resultMessage?.contains("It was updated at") == true)
+        #expect(editor.resultMessage?.contains("you loaded the version of") == true)
+        withExtendedLifetime(app) {}
+    }
+
+    /// Only the deployment state changed, with the same `updated`: Save and
+    /// Deploy both go through.
+    @Test func aChangedDeploymentStateStopsNeitherSaveNorDeploy() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, Self.otherStateJSON)
+            case ("PATCH", Self.blueprintPath), ("POST", Self.blueprintPath + "/deploy"): Self.noContent
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        await editor.save(andDeploy: false)
+        #expect(editor.status?.title == "Saved")
+        await editor.deploy()
+        #expect(editor.status?.title == "Deployment Started")
+        withExtendedLifetime(app) {}
+    }
+
+    /// Restore sends only the steps too: a scope-only change doesn't stop it.
+    @Test func restoreGoesThroughAfterAScopeOnlyChange() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, Self.widenedScopeJSON)
+            case ("PATCH", Self.blueprintPath): Self.noContent
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        let backup = try BackupStore.write(editor.base, root: backupRoot)
+
+        await editor.restore(from: BlueprintBackup(url: backup, blueprintID: Self.blueprintID, date: Date(), size: 0))
+
+        #expect(methods(server) == ["GET", "PATCH", "GET"])
+        #expect(editor.status?.title == "Restored")
+        withExtendedLifetime(app) {}
+    }
+
+    /// A backup written by 1.1.0 (its own file, default permissions, not
+    /// through JTKit's store) is listed and restored byte for byte.
+    @Test func aBackupWrittenBy110IsListedAndRestored() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, emailBlueprintJSON)
+            case ("PATCH", Self.blueprintPath): Self.noContent
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        let folder = backupRoot.appending(path: Self.blueprintID, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let old = folder.appending(path: "2026-10-07T14-03-11.123Z.json")
+        try Data(Self.changedStepsJSON.utf8).write(to: old, options: .withoutOverwriting)
+
+        let listed = BackupStore.backups(for: Self.blueprintID, root: backupRoot)
+        #expect(listed.map(\.url.lastPathComponent) == ["2026-10-07T14-03-11.123Z.json"])
+        await editor.restore(from: try #require(listed.first))
+
+        let patch = try #require(server.requests.first { $0.method == "PATCH" })
+        let steps = try #require(try LosslessJSON(string: Self.changedStepsJSON)["steps"]).serializedString()
+        #expect(String(decoding: patch.body, as: UTF8.self) == #"{"steps":"# + steps + "}")
+        #expect(try Data(contentsOf: old) == Data(Self.changedStepsJSON.utf8), "the old backup is untouched")
+        #expect(BackupStore.backups(for: Self.blueprintID, root: backupRoot).count == 2)
+        withExtendedLifetime(app) {}
     }
 
     /// Editing the active connection's Environment ID in Settings makes it
@@ -443,8 +778,8 @@ final class EditorSafetyTests {
         await editor.save(andDeploy: true)
 
         #expect(methods(server) == ["GET", "PATCH", "GET", "GET", "POST"], "JTKit reads it again just before the deploy")
-        #expect(editor.alert?.title == "Saved, Deploy Failed")
-        #expect(editor.alert?.message.contains("was saved") == true)
+        #expect(editor.resultTitle == "Saved, Deploy Failed")
+        #expect(editor.resultMessage?.contains("was saved") == true)
         #expect(!editor.isDirty)
         withExtendedLifetime(app) {}
     }
@@ -466,11 +801,53 @@ final class EditorSafetyTests {
         await editor.save(andDeploy: true)
 
         #expect(methods(server) == ["GET", "PATCH", "GET"], "no deploy")
-        #expect(editor.alert?.title == "Saved, Reload Failed")
-        #expect(editor.alert?.message.contains("wasn’t deployed") == true)
+        #expect(editor.resultTitle == "Saved, Not Reloaded")
+        #expect(editor.resultMessage?.contains("wasn’t deployed") == true)
         #expect(!editor.isDirty, "the saved edits don't look unsaved")
         let value = editor.document.payloads[0].domains.first?.entries?.first?.settings.first { $0.key == "OfficeAutoSignIn" }?.value
         #expect(value == .boolean(false))
+        withExtendedLifetime(app) {}
+    }
+
+    /// After a save whose reload failed, the next Save and Deploy are
+    /// refused until a reload: Jamf's copy is newer than the one kept.
+    @Test func afterAFailedReloadTheNextSaveAndDeployWaitForAReload() async throws {
+        let script = ServerScript()
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): return Self.token
+            case ("GET", Self.blueprintPath):
+                switch script.count("GET") {
+                case 1: return .json(200, emailBlueprintJSON)
+                case 2: return Self.notFound
+                default: return .json(200, Self.changedJSON)
+                }
+            case ("PATCH", Self.blueprintPath): return Self.noContent
+            default: return .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+        await editor.save(andDeploy: false)
+        #expect(editor.resultTitle == "Saved, Not Reloaded")
+        editor.alert = nil
+
+        // Back to true: the saved baseline has false now.
+        let domain = try #require(editor.document.payloads[0].domains.first)
+        let entry = try #require(domain.entries?.first)
+        let nodeID = try #require(entry.settings.first { $0.key == "OfficeAutoSignIn" }?.id)
+        editor.modifySettings("Edit", domainID: domain.id, entryID: entry.id) { nodes in
+            nodes.modifyNode(withID: nodeID) { $0.value = .boolean(true) }
+        }
+        #expect(editor.isDirty)
+        await editor.save(andDeploy: false)
+        #expect(editor.alert?.kind == .conflict, "the second save waits for a reload")
+        editor.alert = nil
+        editor.discardChanges()
+        await editor.deploy()
+        #expect(editor.alert?.kind == .conflict, "so does a deploy")
+        #expect(methods(server).filter { $0 == "PATCH" }.count == 1)
+        #expect(!methods(server).contains("POST"))
         withExtendedLifetime(app) {}
     }
 
@@ -488,7 +865,7 @@ final class EditorSafetyTests {
 
         await editor.save(andDeploy: false)
 
-        #expect(editor.alert?.title == "Blueprint Is Read-Only")
+        #expect(editor.resultTitle == "Blueprint Is Read-Only")
         #expect(app.isReadOnly(Self.blueprintID))
         #expect(!editor.canEdit)
         #expect(editor.isDirty, "the edits are kept")
@@ -505,13 +882,13 @@ final class EditorSafetyTests {
 
         await editor.restore(from: BlueprintBackup(url: own, blueprintID: Self.blueprintID, date: Date(), size: 0))
         #expect(editor.alert?.kind == .conflict)
-        #expect(editor.alert?.message.contains("Nothing was changed.") == true)
+        #expect(editor.resultMessage?.contains("Nothing was changed.") == true)
         #expect(!methods(server).contains("PATCH"))
 
         editor.alert = nil
         let foreign = try BackupStore.write(try JamfPlatform.BlueprintDetail(data: Data(rosettaBlueprintJSON.utf8)), root: backupRoot)
         await editor.restore(from: BlueprintBackup(url: foreign, blueprintID: Self.blueprintID, date: Date(), size: 0))
-        #expect(editor.alert?.title == "Restore Failed")
+        #expect(editor.resultTitle == "Restore Failed")
         #expect(!methods(server).contains("PATCH"))
         withExtendedLifetime(app) {}
     }
@@ -531,7 +908,7 @@ final class EditorSafetyTests {
 
         await editor.restore(from: BlueprintBackup(url: backup, blueprintID: Self.blueprintID, date: Date(), size: 0))
 
-        #expect(editor.alert?.title == "Restored")
+        #expect(editor.resultTitle == "Restored")
         #expect(!editor.isDirty)
         #expect(BackupStore.backups(for: Self.blueprintID, root: backupRoot).count == 2, "a fresh backup first")
         withExtendedLifetime(app) {}

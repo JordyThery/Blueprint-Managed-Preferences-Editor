@@ -80,7 +80,12 @@ private struct AppCommands: Commands {
             },
             itemTitle: \.menuTitle
         ) {
-            DemoModeToggle(demo: model.demo) { openWindow(id: WindowID.main) }
+            AppDemoModeToggle(model: model) { openWindow(id: WindowID.main) }
+        }
+        // The editor's actions, also in the menu bar, available when they
+        // are in the window. The window carries them out (`EditorModel.request`).
+        CommandMenu("Blueprint") {
+            BlueprintMenuItems(model: model) { openWindow(id: WindowID.main) }
         }
         // The toolbar's Fetch by ID and Refresh, also in the menu bar.
         CommandGroup(after: .toolbar) {
@@ -93,5 +98,62 @@ private struct AppCommands: Commands {
             }
             .disabled(!model.hasActiveConnection)
         }
+    }
+}
+
+/// Blueprint › Save…, Save & Deploy…, Deploy…, Restore from Backup… and the
+/// domain commands, for the selected Blueprint's editor.
+private struct BlueprintMenuItems: View {
+    let model: AppModel
+    let showWindow: () -> Void
+
+    private var editor: EditorModel? {
+        model.selectedBlueprintID.flatMap { model.editors[$0] }
+    }
+
+    private var selectedDomainID: PreferenceDomain.ID? {
+        if case .domain(let id) = editor?.selection { return id }
+        return nil
+    }
+
+    var body: some View {
+        let editor = editor
+        let canSave = editor.map { $0.isDirty && $0.canEdit } ?? false
+        let canAddDomains = editor.map { $0.canEdit && $0.targetPayloadIndex(near: selectedDomainID) != nil } ?? false
+        let canChangeDomain = selectedDomainID.map { editor?.canEdit(domainID: $0) ?? false } ?? false
+        let canExport = selectedDomainID.flatMap { editor?.domain(withID: $0)?.entries } != nil
+
+        Button("Save…") { ask(.review) }
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(!canSave)
+        Button("Save & Deploy…") { ask(.saveAndDeploy) }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(!canSave)
+        Button("Deploy…") { ask(.deploy) }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(!(editor?.canDeploy ?? false))
+        Divider()
+        Button("Restore from Backup…") { ask(.restore) }
+            .disabled(editor.map { $0.isReadOnly || $0.isBusy } ?? true)
+        Divider()
+        Button("New Domain…") { ask(.newDomain) }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(!canAddDomains)
+        Button("Rename Domain…") { ask(.renameDomain) }
+            .disabled(!canChangeDomain)
+        Button("Remove Domain") { ask(.removeDomain) }
+            .disabled(!canChangeDomain)
+        Divider()
+        Button("Import Domains from File…") { ask(.importDomains) }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+            .disabled(!canAddDomains)
+        Button("Export Domain…") { ask(.exportDomain) }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .disabled(!canExport)
+    }
+
+    private func ask(_ request: EditorModel.Request) {
+        showWindow()
+        editor?.request = request
     }
 }

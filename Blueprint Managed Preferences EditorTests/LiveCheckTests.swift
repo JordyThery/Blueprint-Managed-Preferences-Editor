@@ -259,11 +259,11 @@ struct LiveBlueprintTests {
         }
         let payloadPath = editor.document.payloads[0].path
         await editor.save(andDeploy: false)
-        let saved = changed && editor.alert?.title == "Saved" && !editor.isDirty
+        let saved = changed && editor.resultTitle == "Saved" && !editor.isDirty
         let backedUp = BackupStore.backups(for: blueprintID, root: backups).count == 1
-        #expect(saved && backedUp, "\(editor.alert?.title ?? "no alert"): \(editor.alert?.message ?? "")")
+        #expect(saved && backedUp, "\(editor.resultTitle ?? "no alert"): \(editor.resultMessage ?? "")")
         run.record(step: step("edit the key and save with the app's editor"), passed: saved && backedUp,
-                   note: editor.alert?.title)
+                   note: editor.resultTitle)
 
         // 4. Read back: the key is true, and the steps are otherwise as read
         //    after the create (the rest of the payload included).
@@ -286,7 +286,7 @@ struct LiveBlueprintTests {
         try #require(target.isEmptyStatic(beforeDeploy), "The test group has members now; not deploying")
         let previousStart = readBack.overview.deploymentState?.lastDeploymentStarted
         await editor.deploy()
-        #expect(editor.alert?.title == "Deployment Started", "\(editor.alert?.title ?? "no alert"): \(editor.alert?.message ?? "")")
+        #expect(editor.resultTitle == "Deployment Started", "\(editor.resultTitle ?? "no alert"): \(editor.resultMessage ?? "")")
         let outcome = try await target.blueprints.watchDeployment(id: blueprintID, previousStart: previousStart)
         let deployed = outcome.isFinished && outcome.value?.didSucceed == true
         #expect(deployed, "deployment \(outcome.value?.jobState ?? "unknown")")

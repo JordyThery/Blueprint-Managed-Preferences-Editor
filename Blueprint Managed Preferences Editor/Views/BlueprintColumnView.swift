@@ -35,10 +35,13 @@ struct BlueprintColumnView: View {
 
 private struct EditorColumn: View {
     @Bindable var editor: EditorModel
+    @Environment(AppModel.self) private var model
     @Environment(\.undoManager) private var undoManager
 
     @State private var namePrompt: NamePrompt?
     @State private var isReviewing = false
+    /// The review opens with the Save & Deploy question (Blueprint › Save & Deploy…).
+    @State private var reviewStartsWithDeploy = false
     @State private var isRestoring = false
     @State private var isConfirmingDeploy = false
     @State private var isConfirmingDiscard = false
@@ -73,8 +76,12 @@ private struct EditorColumn: View {
             Divider()
             actionBar
         }
-        .onAppear { editor.undoManager = undoManager }
+        .onAppear {
+            editor.undoManager = undoManager
+            carryOut(editor.request)
+        }
         .onChange(of: undoManager) { editor.undoManager = undoManager }
+        .onChange(of: editor.request) { carryOut(editor.request) }
         .sheet(item: $namePrompt) { prompt in
             NameSheet(
                 title: prompt.title,
@@ -92,8 +99,8 @@ private struct EditorColumn: View {
                 }
             )
         }
-        .sheet(isPresented: $isReviewing) {
-            ReviewChangesSheet(editor: editor)
+        .sheet(isPresented: $isReviewing, onDismiss: { reviewStartsWithDeploy = false }) {
+            ReviewChangesSheet(editor: editor, startsWithDeploy: reviewStartsWithDeploy)
         }
         .sheet(isPresented: $isRestoring) {
             RestoreBackupSheet(editor: editor)
@@ -143,6 +150,46 @@ private struct EditorColumn: View {
         }
     }
 
+    /// A command from the menu bar (`EditorModel.Request`), the same as the
+    /// window's own buttons and menus; Export is the domain editor's.
+    private func carryOut(_ request: EditorModel.Request?) {
+        guard let request, request != .exportDomain else { return }
+        editor.request = nil
+        switch request {
+        case .review:
+            if editor.isDirty && editor.canEdit { isReviewing = true }
+        case .saveAndDeploy:
+            if editor.isDirty && editor.canEdit {
+                reviewStartsWithDeploy = true
+                isReviewing = true
+            }
+        case .deploy:
+            if editor.canDeploy { isConfirmingDeploy = true }
+        case .restore:
+            if !editor.isReadOnly && !editor.isBusy { isRestoring = true }
+        case .newDomain:
+            if editor.canEdit { newDomain() }
+        case .renameDomain:
+            if editor.canEdit { renameSelectedDomain() }
+        case .removeDomain:
+            if let id = selectedDomainID, editor.canEdit(domainID: id) { editor.removeDomain(id) }
+        case .importDomains:
+            if editor.canEdit { importDomains() }
+        case .exportDomain:
+            break
+        }
+    }
+
+    private func newDomain() {
+        namePrompt = NamePrompt(title: "New Domain", actionTitle: "Add", initial: "com.example.preferences", domainID: nil)
+    }
+
+    private func renameSelectedDomain() {
+        if let id = selectedDomainID, let domain = editor.domain(withID: id) {
+            namePrompt = NamePrompt(title: "Rename Domain", actionTitle: "Rename", initial: domain.name, domainID: id)
+        }
+    }
+
     private var selectedDomainID: PreferenceDomain.ID? {
         if case .domain(let id) = editor.selection { return id }
         return nil
@@ -171,7 +218,33 @@ private struct EditorColumn: View {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text(editor.operation.label).font(.caption)
-                RetryWaitStatus()
+                RetryWaitStatus(waits: model.editorWaits)
+            }
+        } else if let status = editor.status {
+            // The last result, in the window rather than an alert.
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Label {
+                    Text(status.message)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    if status.isDone {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Image(systemName: "info.circle.fill").foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
+                .accessibilityLabel("\(status.title): \(status.message)")
+                Spacer(minLength: 0)
+                Button {
+                    editor.status = nil
+                } label: {
+                    Label("Dismiss", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Dismiss this message")
             }
         } else if editor.isDirty {
             Label {
@@ -207,7 +280,7 @@ private struct EditorColumn: View {
                     Text(payload.displayName)
                 }
             }
-            Section("Debug") {
+            Section("Blueprint JSON") {
                 Label("Raw JSON", systemImage: "curlybraces")
                     .tag(EditorSelection.rawJSON)
             }
@@ -220,16 +293,10 @@ private struct EditorColumn: View {
     private var actionBar: some View {
         HStack(spacing: 8) {
             Menu {
-                Button("New Domain…") {
-                    namePrompt = NamePrompt(title: "New Domain", actionTitle: "Add", initial: "com.example.preferences", domainID: nil)
-                }
+                Button("New Domain…", action: newDomain)
                 Button("Import Domains from File…", action: importDomains)
                 Divider()
-                Button("Rename Selected Domain…") {
-                    if let id = selectedDomainID, let domain = editor.domain(withID: id) {
-                        namePrompt = NamePrompt(title: "Rename Domain", actionTitle: "Rename", initial: domain.name, domainID: id)
-                    }
-                }
+                Button("Rename Selected Domain…", action: renameSelectedDomain)
                 .disabled(selectedDomainID == nil)
                 Button("Remove Selected Domain", role: .destructive) {
                     if let id = selectedDomainID { editor.removeDomain(id) }
@@ -271,9 +338,9 @@ private struct EditorColumn: View {
             Button("Deploy…") { isConfirmingDeploy = true }
                 .disabled(!editor.canDeploy)
                 .help(deployHelp)
+            // ⌘S is Blueprint › Save… in the menu bar.
             Button("Save…") { isReviewing = true }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut("s", modifiers: .command)
                 .disabled(!editor.isDirty || !editor.canEdit)
                 .help("Review the changes, then save them to Jamf Pro")
         }
@@ -290,11 +357,12 @@ private struct EditorColumn: View {
         do {
             let imported = try PlistImporter.domains(from: Data(contentsOf: url), fileName: url.lastPathComponent)
             guard !imported.isEmpty else {
-                importSummary = ImportSummary(title: "Nothing Imported", message: "No preference domains were found in \(url.lastPathComponent).")
+                editor.show(EditorModel.Status(title: "Nothing Imported", message: "No preference domains were found in \(url.lastPathComponent)."))
                 return
             }
             let summary = editor.importDomains(imported, near: selectedDomainID).summary(fileName: url.lastPathComponent)
-            importSummary = ImportSummary(title: summary.title, message: summary.message)
+            // A result, shown in the window like Saved; only a failure is an alert.
+            editor.show(EditorModel.Status(title: summary.title, message: summary.message))
         } catch {
             importSummary = ImportSummary(title: "Import Failed", message: error.localizedDescription)
         }
@@ -302,18 +370,18 @@ private struct EditorColumn: View {
 }
 
 /// JTKit's wait before a retry ("Jamf asked to wait 40 s"), with Stop, which
-/// ends the wait: the request isn't sent again and the operation says what
-/// that left.
+/// ends the waits of this place only (the editors, discovery or Settings):
+/// the request isn't sent again and the operation says what that left.
 struct RetryWaitStatus: View {
-    @Environment(AppModel.self) private var model
+    let waits: RequestWaits
 
     var body: some View {
-        if let text = model.waits.statusText {
+        if let text = waits.statusText {
             HStack(spacing: 6) {
                 Text(text)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Stop") { model.waits.cancelAll() }
+                Button("Stop") { waits.cancelAll() }
                     .controlSize(.small)
                     .help("Stop waiting; the request isn’t sent again")
             }

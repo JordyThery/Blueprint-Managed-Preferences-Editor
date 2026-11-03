@@ -1,3 +1,4 @@
+@testable import Blueprint_Managed_Preferences_Editor
 // Blueprint detail fixtures in the Platform API's exact serialization style:
 // compact JSON with the member order the server uses. All identifiers, names
 // and timestamps are synthetic. Do not reformat; tests assert byte-identical
@@ -13,3 +14,9 @@ let rosettaBlueprintJSON = #"{"id":"0a1b2c3d-3333-4333-8333-0123456789ab","name"
 /// Includes the DDM component with fields the app must never touch, mixed number
 /// literals, unicode and escapes.
 let sampleBlueprintJSON = #"{"id":"6f0c1e2a-0000-4000-8000-000000000001","name":"Microsoft AutoUpdate – Legacy","description":"Migrated from \"Classic\" profile","created":"2025-11-02T09:15:00.123Z","updated":"2026-09-30T14:02:11.987654Z","deploymentState":{"state":"DEPLOYED","lastDeployment":{"started":"2026-09-30T14:03:00Z","state":"SUCCEEDED"}},"scope":{"deviceGroups":["a1","b2"]},"steps":[{"name":"Step 1","activationPredicate":null,"components":[{"identifier":"com.jamf.ddm.passcode","configuration":{"minLength":6,"ratio":1.0,"big":12345678901234567890123,"exp":1e5,"neg":-0,"enabled":true,"tags":[],"meta":{}}},{"identifier":"com.jamf.ddm-configuration-profile","configuration":{"payloadDisplayName":"MAU","payloadContent":[{"payloadType":"com.apple.ManagedClient.preferences","PayloadContent":{"com.microsoft.autoupdate2":{"Forced":[{"mcx_preference_settings":{"HowToCheck":"AutomaticDownload","UpdateCheckFrequency":720,"EnableCheckForUpdatesButton":false,"Ratio":0.5,"Channels":["Production","Preview"],"Nested":{"a":"é😀/","b":"line\nbreak"}}}]},"com.example.other":{"Set-Once":[{"mcx_data_timestamp":"2024-01-01T00:00:00Z","mcx_preference_settings":{"Key":"Value"}}]}}}]}}]}]}"#
+
+extension EditorModel {
+    /// The last result's title: an alert, or a result shown in the window's status line.
+    var resultTitle: String? { alert?.title ?? status?.title }
+    var resultMessage: String? { alert?.message ?? status?.message }
+}

@@ -29,6 +29,52 @@ final class EditorModel {
             case .reloading: "Reloading…"
             }
         }
+
+        /// "the save", for "Wait for the save to finish".
+        var noun: String {
+            switch self {
+            case .idle: "the operation"
+            case .saving: "the Save"
+            case .deploying: "the Deploy"
+            case .restoring: "the Restore"
+            case .reloading: "the Reload"
+            }
+        }
+
+        /// "saved", for "is still being saved".
+        var pastParticiple: String {
+            switch self {
+            case .idle: "changed"
+            case .saving: "saved"
+            case .deploying: "deployed"
+            case .restoring: "restored"
+            case .reloading: "reloaded"
+            }
+        }
+    }
+
+    /// A menu bar command for the window to carry out: the window holds the
+    /// sheets and confirmations, the menu only asks (`request`).
+    enum Request: Equatable {
+        case review
+        case saveAndDeploy
+        case deploy
+        case restore
+        case newDomain
+        case renameDomain
+        case removeDomain
+        case importDomains
+        case exportDomain
+    }
+
+    /// A result shown in the window, not in an alert: "“…” was saved." It
+    /// stays until the next edit or operation.
+    struct Status: Equatable {
+        let title: String
+        let message: String
+
+        /// Something was done (Saved, Imported), not only reported (Stopped, Nothing Imported).
+        var isDone: Bool { !title.contains("Stopped") && !title.hasPrefix("Nothing") }
     }
 
     struct Alert {
@@ -52,6 +98,10 @@ final class EditorModel {
     /// The selected entry per domain, for domains with several mode entries.
     var selectedEntryIDs: [PreferenceDomain.ID: MCXEntry.ID] = [:]
     var alert: Alert?
+    /// The last result, shown in the editor's status line.
+    var status: Status?
+    /// Set by the menu bar; the window carries it out and clears it.
+    var request: Request?
 
     /// The window's undo manager, set by the views.
     weak var undoManager: UndoManager?
@@ -89,6 +139,7 @@ final class EditorModel {
     @discardableResult
     private func perform(_ actionName: String, _ change: (inout BlueprintEditDocument) -> Void) -> Bool {
         guard canEdit else { return false }
+        status = nil
         var updated = document
         change(&updated)
         guard updated.payloads != document.payloads else { return false }
@@ -308,15 +359,19 @@ final class EditorModel {
 
     // MARK: Save / deploy / restore
 
-    /// Save pipeline: re-GET and compare steps, scope and `updated`, back up,
-    /// PATCH the complete steps array, reload. Optionally deploys afterwards.
-    /// Each step that fails after the save says that the save itself went through.
+    /// Save pipeline: re-GET and compare the steps and `updated` (Save sends
+    /// only the steps, so the scope may differ), back up, PATCH the complete
+    /// steps array, reload. Optionally deploys afterwards, which compares
+    /// the scope too. Each step that fails after the save says that the
+    /// save itself went through.
     func save(andDeploy deploy: Bool) async {
         guard isDirty, !isReadOnly, !isBusy else { return }
         let snapshot = document
         let name = snapshot.base.overview.name
         let generation = app.connectionGeneration
-        operation = .saving
+        // Decided now: a connection or Demo Mode change can't move the backup.
+        let backupRoot = app.backupRoot
+        begin(.saving)
         defer { operation = .idle }
         let service: JamfPlatform.Blueprints
         var sent = false
@@ -325,13 +380,13 @@ final class EditorModel {
 
             // 1. Optimistic concurrency.
             let latest = try await service.detail(id: blueprintID)
-            guard snapshot.base.isUnchangedInStepsAndScope(in: latest) else {
-                report(conflictAlert(latest: latest, outcome: "Nothing was changed."), generation)
+            if let change = Self.serverChange(from: snapshot.base, to: latest, comparingScope: false) {
+                report(conflictAlert(latest: latest, change: change, outcome: "Nothing was changed."), generation)
                 return
             }
 
             // 2. Backup of the full detail as it is on the server right now.
-            try BackupStore.write(latest, root: app.backupRoot)
+            try BackupStore.write(latest, root: backupRoot)
 
             // 3. PATCH the complete steps array.
             guard let steps = snapshot.updatedSteps else {
@@ -346,11 +401,11 @@ final class EditorModel {
 
         // 4. Reload the new baseline. If that fails, what was sent becomes the
         // baseline, so the saved edits don't look unsaved.
-        if let error = await reloadAfterWrite(service: service, generation: generation) {
+        if let problem = await reloadAfterWrite(service: service, generation: generation) {
             markSaved(snapshot)
             let skipped = deploy ? ", so it wasn’t deployed" : ""
-            report(Alert(kind: .error, title: "Saved, Reload Failed",
-                         message: "“\(name)” was saved, but reloading it failed\(skipped). Reload before editing again.\n\n\(error.localizedDescription)"),
+            report(Alert(kind: .error, title: "Saved, Not Reloaded",
+                         message: "“\(name)” was saved, but \(problem.sentence)\(skipped). Reload before editing again.\(problem.detail)"),
                    generation)
             return
         }
@@ -362,7 +417,7 @@ final class EditorModel {
 
         // 5. Deploy what was just saved and checked.
         operation = .deploying
-        switch await startDeployment(service: service, confirmed: base) {
+        switch await startDeployment(service: service, confirmed: base, generation: generation) {
         case .started:
             break
         case .notStarted(let alert):
@@ -376,9 +431,9 @@ final class EditorModel {
                    generation)
             return
         }
-        if let error = await reloadAfterWrite(service: service, generation: generation) {
-            report(Alert(kind: .error, title: "Reload Failed",
-                         message: "“\(name)” was saved and its deployment has started, but reloading it failed. Reload before editing again.\n\n\(error.localizedDescription)"),
+        if let problem = await reloadAfterWrite(service: service, generation: generation) {
+            report(Alert(kind: .error, title: "Saved and Deployed, Not Reloaded",
+                         message: "“\(name)” was saved and its deployment has started, but \(problem.sentence). Reload before editing again.\(problem.detail)"),
                    generation)
             return
         }
@@ -394,7 +449,7 @@ final class EditorModel {
         guard canDeploy else { return }
         let name = base.overview.name
         let generation = app.connectionGeneration
-        operation = .deploying
+        begin(.deploying)
         defer { operation = .idle }
         let service: JamfPlatform.Blueprints
         do {
@@ -403,7 +458,7 @@ final class EditorModel {
             handle(error, action: .deploy, mayHaveReachedJamf: false, generation)
             return
         }
-        switch await startDeployment(service: service, confirmed: base) {
+        switch await startDeployment(service: service, confirmed: base, generation: generation) {
         case .started:
             break
         case .notStarted(let alert):
@@ -413,9 +468,9 @@ final class EditorModel {
             report(Alert(kind: .error, title: "Deploy Failed", message: message), generation)
             return
         }
-        if let error = await reloadAfterWrite(service: service, generation: generation) {
-            report(Alert(kind: .error, title: "Reload Failed",
-                         message: "The deployment of “\(name)” has started, but reloading it failed. Reload before editing again.\n\n\(error.localizedDescription)"),
+        if let problem = await reloadAfterWrite(service: service, generation: generation) {
+            report(Alert(kind: .error, title: "Deployed, Not Reloaded",
+                         message: "The deployment of “\(name)” has started, but \(problem.sentence). Reload before editing again.\(problem.detail)"),
                    generation)
             return
         }
@@ -425,7 +480,7 @@ final class EditorModel {
     /// How a deploy request went.
     private enum DeployOutcome {
         case started
-        /// Nothing was sent: the alert says why.
+        /// Nothing was sent, or Jamf refused it: the alert says why.
         case notStarted(Alert)
         /// The deploy request failed; the message says whether it may have started.
         case failed(String)
@@ -438,7 +493,8 @@ final class EditorModel {
 
     /// JTKit's `startDeployment(id:check:)`: reads the Blueprint, deploys it
     /// only when its steps and scope are still those of `confirmed`.
-    private func startDeployment(service: JamfPlatform.Blueprints, confirmed: JamfPlatform.BlueprintDetail) async -> DeployOutcome {
+    private func startDeployment(service: JamfPlatform.Blueprints, confirmed: JamfPlatform.BlueprintDetail,
+                                 generation: Int) async -> DeployOutcome {
         do {
             _ = try await service.startDeployment(id: blueprintID) { latest in
                 guard confirmed.isUnchangedInStepsAndScope(in: latest) else { throw ChangedOnServer(latest: latest) }
@@ -447,7 +503,10 @@ final class EditorModel {
         } catch let notStarted as JamfPlatform.Blueprints.DeploymentNotStarted {
             // Nothing was sent, so nothing started.
             if let changed = notStarted.underlying as? ChangedOnServer {
-                return .notStarted(conflictAlert(latest: changed.latest, outcome: "Nothing was deployed. Reload to see its current settings and scope."))
+                let change = Self.serverChange(from: confirmed, to: changed.latest, comparingScope: true)
+                    ?? "It was changed"
+                return .notStarted(conflictAlert(latest: changed.latest, change: change,
+                                                 outcome: "Nothing was deployed. Reload to see its current settings and scope."))
             }
             if notStarted.underlying is CancellationError {
                 return .notStarted(Alert(kind: .info, title: "Deploy Stopped",
@@ -457,6 +516,10 @@ final class EditorModel {
                                      message: "Nothing was deployed.\n\n\(notStarted.underlying.localizedDescription)"))
         } catch is CancellationError {
             return .failed("You stopped waiting for Jamf. The deployment may have started anyway: reload to see its state.")
+        } catch let error as JamfPlatform.APIError where error.divisionLockMessage != nil {
+            // Refused for a division, as Save would be: read-only from now on.
+            if app.connectionGeneration == generation { app.readOnlyBlueprintIDs.insert(blueprintID) }
+            return .notStarted(Alert(kind: .error, title: "Blueprint Is Read-Only", message: error.localizedDescription))
         } catch {
             let refused = (error as? JamfPlatform.APIError)?.status.map { (400..<500).contains($0) } ?? false
             let maybe = refused ? "" : " It may have started anyway: reload to see its state."
@@ -464,12 +527,15 @@ final class EditorModel {
         }
     }
 
-    /// PATCHes the steps from a backup, after the same concurrency check and a fresh backup.
+    /// PATCHes the steps from a backup, after the same check as Save (steps
+    /// and `updated`) and a fresh backup.
     func restore(from backup: BlueprintBackup) async {
         guard !isReadOnly, !isBusy else { return }
         let name = base.overview.name
         let generation = app.connectionGeneration
-        operation = .restoring
+        // Decided now: a connection or Demo Mode change can't move the backup.
+        let backupRoot = app.backupRoot
+        begin(.restoring)
         defer { operation = .idle }
         let service: JamfPlatform.Blueprints
         var sent = false
@@ -480,11 +546,11 @@ final class EditorModel {
             }
             service = try app.currentService()
             let latest = try await service.detail(id: blueprintID)
-            guard base.isUnchangedInStepsAndScope(in: latest) else {
-                report(conflictAlert(latest: latest, outcome: "Nothing was changed."), generation)
+            if let change = Self.serverChange(from: base, to: latest, comparingScope: false) {
+                report(conflictAlert(latest: latest, change: change, outcome: "Nothing was changed."), generation)
                 return
             }
-            try BackupStore.write(latest, root: app.backupRoot)
+            try BackupStore.write(latest, root: backupRoot)
             sent = true
             try await service.patchSteps(id: blueprintID, steps: steps)
         } catch {
@@ -492,13 +558,13 @@ final class EditorModel {
             return
         }
         let date = backup.date.formatted(date: .abbreviated, time: .standard)
-        if let error = await reloadAfterWrite(service: service, generation: generation) {
-            report(Alert(kind: .error, title: "Restored, Reload Failed",
-                         message: "The steps from the backup of \(date) were restored to “\(name)”, but reloading it failed. Reload before editing again.\n\n\(error.localizedDescription)"),
+        if let problem = await reloadAfterWrite(service: service, generation: generation) {
+            report(Alert(kind: .error, title: "Restored, Not Reloaded",
+                         message: "The steps from the backup of \(date) were restored to “\(name)”, but \(problem.sentence). Reload before editing again.\(problem.detail)"),
                    generation)
             return
         }
-        report(Alert(kind: .info, title: "Restored", message: "The steps from the backup of \(date) were restored. Deploy to apply them to devices."), generation)
+        report(Alert(kind: .info, title: "Restored", message: "The steps from the backup of \(date) were restored to “\(name)”. Deploy to apply them to devices."), generation)
     }
 
     /// Re-fetches the Blueprint. With unsaved edits only when
@@ -506,7 +572,7 @@ final class EditorModel {
     func reload(discardingEdits: Bool = false) async {
         guard !isBusy, !isDirty || discardingEdits else { return }
         let generation = app.connectionGeneration
-        operation = .reloading
+        begin(.reloading)
         defer { operation = .idle }
         do {
             let fresh = try await app.currentService().detail(id: blueprintID)
@@ -518,16 +584,31 @@ final class EditorModel {
         }
     }
 
-    /// Reloads after a successful write. Returns the error if the reload failed.
+    private func begin(_ operation: Operation) {
+        status = nil
+        self.operation = operation
+    }
+
+    /// Why a reload after a write didn't happen, for "“…” was saved, but …".
+    private struct ReloadProblem {
+        /// "you stopped waiting for Jamf before it was reloaded"
+        let sentence: String
+        /// The error, after a blank line; empty after Stop.
+        let detail: String
+    }
+
+    /// Reloads after a successful write. Returns why it didn't, or nil.
     /// Nothing reaches the app's state once the connection changed meanwhile.
-    private func reloadAfterWrite(service: JamfPlatform.Blueprints, generation: Int) async -> Error? {
+    private func reloadAfterWrite(service: JamfPlatform.Blueprints, generation: Int) async -> ReloadProblem? {
         do {
             let fresh = try await service.detail(id: blueprintID)
             if app.connectionGeneration == generation { app.store(fresh) }
             reset(to: fresh)
             return nil
+        } catch is CancellationError {
+            return ReloadProblem(sentence: "you stopped waiting for Jamf before it was reloaded", detail: "")
         } catch {
-            return error
+            return ReloadProblem(sentence: "reloading it failed", detail: "\n\n\(error.localizedDescription)")
         }
     }
 
@@ -540,23 +621,49 @@ final class EditorModel {
         reset(to: saved)
     }
 
-    private func conflictAlert(latest: JamfPlatform.BlueprintDetail, outcome: String) -> Alert {
-        func time(_ overview: JamfPlatform.BlueprintOverview) -> String {
-            overview.updatedDate?.formatted(date: .abbreviated, time: .standard) ?? overview.updated ?? "unknown"
+    /// What changed on the server between `loaded` and `latest`, as a
+    /// sentence, or nil when nothing that matters did: the steps compared in
+    /// full and the `updated` time (when both copies have one), and for a
+    /// deploy the scope too. Save and Restore send only the steps, so a
+    /// scope changed by someone else doesn't stop them.
+    static func serverChange(from loaded: JamfPlatform.BlueprintDetail, to latest: JamfPlatform.BlueprintDetail,
+                             comparingScope: Bool) -> String? {
+        guard loaded.overview.id == latest.overview.id else { return "It is another Blueprint" }
+        if (loaded.steps ?? .null) != (latest.steps ?? .null) {
+            return "Its steps (its payloads and other settings) were changed"
         }
+        if comparingScope, (loaded.scope ?? .null) != (latest.scope ?? .null) {
+            return "Its scope was changed"
+        }
+        if let updated = loaded.overview.updated, let latestUpdated = latest.overview.updated, updated != latestUpdated {
+            func time(_ overview: JamfPlatform.BlueprintOverview, _ raw: String) -> String {
+                overview.updatedDate?.formatted(date: .abbreviated, time: .standard) ?? raw
+            }
+            return "It was updated at \(time(latest.overview, latestUpdated)); you loaded the version of \(time(loaded.overview, updated))"
+        }
+        return nil
+    }
+
+    private func conflictAlert(latest: JamfPlatform.BlueprintDetail, change: String, outcome: String) -> Alert {
         let edits = isDirty ? "; unsaved edits will be lost" : ""
         return Alert(
             kind: .conflict,
             title: "Blueprint Changed on the Server",
-            message: "“\(latest.overview.name)” was modified after you loaded it (loaded: \(time(base.overview)), now: \(time(latest.overview))). \(outcome) Reload to get the latest version\(edits)."
+            message: "“\(latest.overview.name)” was changed on the server after you loaded it. \(change). \(outcome) Reload to get the latest version\(edits)."
         )
     }
 
-    /// Shows `alert` on this editor, or, when the connection changed while the
-    /// operation ran (or the editor was closed), in the main window.
+    /// Shows a result on this editor: an info result in the window's status
+    /// line (and read out by VoiceOver), anything else as an alert; or, when
+    /// the connection changed while the operation ran (or the editor was
+    /// closed), in the main window.
     private func report(_ alert: Alert, _ generation: Int) {
         if app.connectionGeneration == generation, app.editors[blueprintID] === self {
-            self.alert = alert
+            if alert.kind == .info {
+                show(Status(title: alert.title, message: alert.message))
+            } else {
+                self.alert = alert
+            }
         } else {
             app.notice = Alert(
                 kind: alert.kind == .info ? .info : .error,
@@ -564,6 +671,13 @@ final class EditorModel {
                 message: alert.message + "\n\nThis was on the connection in use before the connection changed."
             )
         }
+    }
+
+    /// Shows a result in the status line and asks VoiceOver to read it.
+    func show(_ status: Status) {
+        self.status = status
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: status.message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
 
     /// What an operation is called in its messages.
