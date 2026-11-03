@@ -2,8 +2,13 @@
 
 ## 1.2.0
 
-- When Jamf asks the app to wait before trying a request again, the wait is now shown while Blueprints are read, saved, deployed or restored, with **Stop** to end it. A wait lasts at most 60 seconds (it could be two minutes). After Stop, the message says whether anything reached Jamf.
-- **Deploy…**, **Save** and **Restore** now also stop when someone changed the Blueprint’s steps or scope on the server since you loaded it, so a deployment never goes to a scope you didn’t confirm.
+- When Jamf asks the app to wait before trying a request again, the wait is now shown while Blueprints are read, saved, deployed or restored, and during **Test Connection** and **Load Environments** in Settings, with **Stop** to end it. Each **Stop** ends only the waits shown beside it. A wait lasts at most 60 seconds (it could be two minutes). After Stop, the message says whether anything reached Jamf.
+- **Deploy…** now also stops when someone changed the Blueprint’s steps or scope on the server since you loaded it, so a deployment never goes to a scope you didn’t confirm. **Save** and **Restore**, which send only the steps, stop when the steps or the last-updated time changed, and no longer stop for a change of scope alone. The message says what changed.
+- While a save, deploy, restore or reload is running, switching the connection or Demo Mode waits until it has finished, with a message saying why, so its backup and its result stay with the connection in use.
+- A new **Blueprint** menu holds **Save…** (⌘S), **Save & Deploy…** (⌥⌘S), **Deploy…** (⇧⌘D), **Restore from Backup…** and the domain commands: **New Domain…** (⇧⌘N), **Rename Domain…**, **Remove Domain**, **Import Domains from File…** (⇧⌘I) and **Export Domain…** (⇧⌘E). Each is available when the same action is in the window.
+- Results such as “Saved”, “Deployment Started”, “Restored” and import results now appear in the window, beside the Blueprint, instead of in an alert; errors and changes on the server still ask in an alert.
+- The main window can be made narrower.
+- The domain list’s “Debug” section is now called **Blueprint JSON**, and a domain’s entries are named by their mode (for example “Set-Once”, or “Forced (1 of 2)” when a mode has two).
 - A locked Keychain, or one that refuses access, is now reported as a Keychain problem instead of “No complete connection is configured”.
 - A Blueprint is marked read-only for a division only when Jamf names a division; an empty division value no longer locks it. A Blueprint whose changes Jamf refuses for a division is still marked read-only.
 - After correcting a connection’s region in Settings › Connections, **Test Connection** and **Load Environments** use the stored client secret, without retyping it.
