@@ -121,6 +121,73 @@ final class EditorSafetyTests {
         withExtendedLifetime(app) {}
     }
 
+    /// A scope changed on the server is a change, even with the same
+    /// `updated` time: the deploy would go to a scope nobody confirmed.
+    @Test func deployRefusesABlueprintWhoseScopeChanged() async throws {
+        let widened = emailBlueprintJSON.replacingOccurrences(of: #""deviceGroups":["#, with: #""deviceGroups":["g-all-macs","#)
+        #expect(widened != emailBlueprintJSON)
+        let server = MockServer { request in
+            request.path == "/auth/token" ? Self.token : .json(200, widened)
+        }
+        let (app, editor) = try makeApp(server)
+
+        await editor.deploy()
+
+        #expect(methods(server) == ["GET"], "no deploy request")
+        #expect(editor.alert?.kind == .conflict)
+        #expect(editor.alert?.message.contains("Nothing was deployed.") == true)
+        withExtendedLifetime(app) {}
+    }
+
+    /// Stop during a wait before a retry: the deploy request is never sent,
+    /// and the alert says nothing was deployed.
+    @Test func stoppingAWaitBeforeTheDeployDeploysNothing() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(503, "{}", headers: ["Retry-After": "40"])
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+
+        let deploy = Task { await editor.deploy() }
+        await waitUntil { app.waits.statusText != nil }
+        #expect(app.waits.statusText?.contains("40 s") == true)
+        app.waits.cancelAll()
+        await deploy.value
+
+        #expect(!methods(server).contains("POST"), "no deploy request")
+        #expect(editor.alert?.title == "Deploy Stopped")
+        #expect(editor.alert?.message.contains("nothing was deployed") == true)
+        #expect(!editor.isBusy)
+    }
+
+    /// Stop while the save's PATCH waits for a retry: Jamf may have the
+    /// change, so the alert says to reload rather than "nothing was saved".
+    @Test func stoppingAWaitDuringTheSaveSaysItMayHaveReachedJamf() async throws {
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath): .json(200, emailBlueprintJSON)
+            case ("PATCH", Self.blueprintPath): .json(503, "{}", headers: ["Retry-After": "40"])
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+
+        let save = Task { await editor.save(andDeploy: false) }
+        await waitUntil { app.waits.statusText != nil }
+        app.waits.cancelAll()
+        await save.value
+
+        #expect(methods(server) == ["GET", "PATCH"], "not sent again")
+        #expect(editor.alert?.title == "Save Stopped")
+        #expect(editor.alert?.message.contains("may have reached Jamf") == true)
+        #expect(editor.isDirty, "the edits are kept")
+    }
+
     // MARK: Duplicate domains (finding 2)
 
     @Test func newDomainCannotReuseANameInItsPayload() throws {
@@ -375,7 +442,7 @@ final class EditorSafetyTests {
 
         await editor.save(andDeploy: true)
 
-        #expect(methods(server) == ["GET", "PATCH", "GET", "POST"])
+        #expect(methods(server) == ["GET", "PATCH", "GET", "GET", "POST"], "JTKit reads it again just before the deploy")
         #expect(editor.alert?.title == "Saved, Deploy Failed")
         #expect(editor.alert?.message.contains("was saved") == true)
         #expect(!editor.isDirty)

@@ -35,8 +35,7 @@ struct DomainEditorView: View {
                 switch domain.content {
                 case .unsupported(let raw, let reason):
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("This domain has an unexpected shape and is shown read-only. It is saved back unchanged.\n\(reason)", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                        WarningLabel("This domain has an unexpected shape and is shown read-only. It is saved back unchanged.\n\(reason)")
                             .padding([.horizontal, .top])
                         MonospacedTextView(text: raw.serializedString(pretty: true))
                     }

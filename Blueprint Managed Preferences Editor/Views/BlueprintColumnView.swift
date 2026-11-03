@@ -3,9 +3,6 @@ import JTKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The division sentence, as JTKit's error hint words it.
-let divisionLockedText = "This Blueprint is assigned to a division and can’t be changed through the API."
-
 /// Middle column: the domains of the selected Blueprint and its save/deploy actions.
 struct BlueprintColumnView: View {
     let blueprintID: String
@@ -156,7 +153,7 @@ private struct EditorColumn: View {
     }
 
     private var deployHelp: String {
-        if editor.isReadOnly { return divisionLockedText }
+        if editor.isReadOnly { return JamfPlatform.APIError.divisionLocked }
         if editor.isDirty { return "Save your changes first; Save & Deploy in the review does both" }
         return "Deploy the saved Blueprint"
     }
@@ -164,13 +161,14 @@ private struct EditorColumn: View {
     @ViewBuilder
     private var statusBanner: some View {
         if editor.isReadOnly {
-            Label(divisionLockedText, systemImage: "lock.fill")
+            Label(JamfPlatform.APIError.divisionLocked, systemImage: "lock.fill")
                 .font(.caption)
                 .foregroundStyle(.orange)
         } else if editor.isBusy {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text(editor.operation.label).font(.caption)
+                RetryWaitStatus()
             }
         } else if editor.isDirty {
             Label("Unsaved changes · save before deploying", systemImage: "pencil.circle.fill")
@@ -184,9 +182,8 @@ private struct EditorColumn: View {
             ForEach(editor.document.payloads) { payload in
                 Section {
                     if let problem = payload.problem {
-                        Label(problem, systemImage: "exclamationmark.triangle")
+                        WarningLabel(problem)
                             .font(.caption)
-                            .foregroundStyle(.orange)
                     }
                     ForEach(payload.domains) { domain in
                         DomainRow(domain: domain)
@@ -298,6 +295,26 @@ private struct EditorColumn: View {
     }
 }
 
+/// JTKit's wait before a retry ("Jamf asked to wait 40 s"), with Stop, which
+/// ends the wait: the request isn't sent again and the operation says what
+/// that left.
+struct RetryWaitStatus: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let text = model.waits.statusText {
+            HStack(spacing: 6) {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Stop") { model.waits.cancelAll() }
+                    .controlSize(.small)
+                    .help("Stop waiting; the request isn’t sent again")
+            }
+        }
+    }
+}
+
 private struct DomainRow: View {
     let domain: PreferenceDomain
 
@@ -310,20 +327,15 @@ private struct DomainRow: View {
             HStack(spacing: 4) {
                 if let entries = domain.entries {
                     ForEach(Array(Set(entries.map(\.mode))).sorted(), id: \.self) { mode in
-                        Text(mode)
-                            .font(.caption2.weight(.medium))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(.quaternary, in: Capsule())
+                        StatusBadge(mode, style: .neutral)
                     }
                     let count = entries.reduce(0) { $0 + $1.settings.count }
                     Text("\(count) key\(count == 1 ? "" : "s")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Label("Unexpected shape", systemImage: "exclamationmark.triangle")
+                    WarningLabel("Unexpected shape")
                         .font(.caption)
-                        .foregroundStyle(.orange)
                 }
             }
         }

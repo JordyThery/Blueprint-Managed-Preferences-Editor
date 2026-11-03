@@ -32,7 +32,8 @@ Download the latest notarized build from [Releases](https://github.com/JordyTher
 - **Undo and redo** for every edit. Unsaved changes are marked on the window and in the sidebar. **Discard Changes…**, **Reload from Server** and Quit ask before unsaved edits are lost; Quit also asks while a save, deploy or restore is running.
 - **Multiple connections** to switch between tenants. Changing connections, changing the active connection’s region, Environment ID or client ID, or deleting it, clears the Blueprints of the previous one.
 - **Demo Mode**: try the app with sample Contoso Blueprints and no Jamf tenant. Turn it on in the connection picker or the Connection menu, or with **Try Demo Mode**. The picker reads “Contoso (Demo)” and window titles end in “— Demo”. Nothing is sent to a tenant and everything resets when the app quits.
-- **Settings**: **General** (appearance), **Connections** and **Updates**.
+- **Settings**: **Connections** and **Updates**. The app follows your Mac’s Light or Dark appearance.
+- **Waits shown, with Stop**: when Jamf asks the app to wait before trying a request again (at most 60 seconds), the wait is shown while Blueprints are read, saved, deployed or restored, with **Stop** to end it. The message then says whether anything reached Jamf.
 - **Activity log and raw JSON**: every sign-in and API call is logged (Window › Activity Log, ⇧⌘L) with secrets redacted; request contents are never logged. The raw JSON view shows the Blueprint as received (**Pretty** or **Exact Response**) and, with unsaved edits, the **Pending PATCH Body** Save will send, each with **Copy** and **Save…**. Only GET requests, token requests, and Blueprint update and deploy requests are ever sent.
 
 ## Saving safely
@@ -40,16 +41,16 @@ Download the latest notarized build from [Releases](https://github.com/JordyTher
 The Jamf Platform API applies Blueprint updates as a JSON merge-patch, and a merge-patch replaces arrays wholesale. A careless save can therefore delete parts of a Blueprint. The app guards against this:
 
 - **Nothing outside your edit changes.** Every save sends the complete `steps` array, with every step and component exactly as it was received except the Managed Preferences you edited. Unedited content is sent back byte for byte.
-- **Concurrent changes are caught.** Just before saving, restoring or deploying, the Blueprint is fetched again. If it changed on the server since you loaded it, nothing is changed or deployed and you’re warned.
+- **Concurrent changes are caught.** Just before saving, restoring or deploying, the Blueprint is fetched again. If its steps, its scope or its last-updated time changed on the server since you loaded it, nothing is changed or deployed and you’re warned, so a deploy never goes to a scope you didn’t confirm.
 - **Every save and restore is backed up first.** The full Blueprint is written to `~/Library/Application Support/Blueprint Managed Preferences Editor/Backups/<Blueprint ID>/` (**Show Backups in Finder**), and **Restore from Backup** puts those steps back.
-- **Division-locked Blueprints are left alone.** `divisionId` is never sent. Blueprints assigned to a division are marked read-only.
+- **Division-locked Blueprints are left alone.** `divisionId` is never sent. Blueprints that Jamf reports as assigned to a division are marked read-only, as are Blueprints whose changes Jamf refuses for that reason.
 - **Deployment needs confirmation.** After a save the Blueprint shows *Out of Date* until you deploy it, and deploying asks for confirmation, showing the Blueprint name and its scope. **Deploy…** is unavailable while edits are unsaved (**Save & Deploy…** in the review does both) and on division-locked Blueprints.
 
 ## Requirements
 
 - macOS 15 or later
 - A Jamf Platform API client (US, EU or APAC region) with the `blueprints:read`, `blueprints:update` and `blueprints:deploy` permissions. **Test Connection** checks only `blueprints:read`; the write permissions can’t be checked without writing.
-- Your **Environment ID**: use **Load Environments** in Settings › Connections (organization-scope API clients), or copy it from the integration’s details in Jamf Account.
+- Your **Environment ID**, a UUID: use **Load Environments** in Settings › Connections (organization-scope API clients), or copy it from the integration’s details in Jamf Account. An Environment ID that isn’t a UUID is flagged under its field, and nothing is sent until it’s corrected.
 
 ## Getting started
 
@@ -60,10 +61,10 @@ The Jamf Platform API applies Blueprint updates as a JSON merge-patch, and a mer
 
 ## Security
 
-- **Credentials** stay on your Mac. Client secrets are stored in the login Keychain; the other connection settings are stored in user defaults.
+- **Credentials** stay on your Mac. Client secrets are stored in the login Keychain; the other connection settings are stored in user defaults. When the Keychain is locked or refuses access, the app says so instead of reporting a missing connection.
 - **Network**: the app talks only to `{region}.api.jamfcloud.com` (sign-in, Blueprints and, with **Load Environments**, the organization’s environment list), plus one daily request to GitHub asking whether a newer release exists. That request sends nothing else and can be turned off in Settings.
 - **Activity log**: kept in memory only, with tokens and secrets redacted. Request contents are never recorded, and responses only when the server reports an error. **Export for Bug Report…** replaces device identifiers (serial numbers, device names), usernames, emails and IP addresses with placeholders; **Export Unmasked…** keeps them.
-- **Backups** contain the full Blueprint JSON as it was on the server, including any values in its Managed Preferences, such as license keys or tokens, but no Jamf credentials. They are stored unencrypted in your user Library, one per save and restore, and never deleted by the app: remove old ones yourself with **Show Backups in Finder**. In Demo Mode, backups go to a temporary folder instead.
+- **Backups** contain the full Blueprint JSON as it was on the server, including any values in its Managed Preferences, such as license keys or tokens, but no Jamf credentials. They are stored unencrypted in your user Library, readable by your user account only, one per save and restore, and never deleted by the app: remove old ones yourself with **Show Backups in Finder**. In Demo Mode, backups go to a temporary folder instead.
 - **No sandbox**: the app is not sandboxed, so backups are written to the exact path above. It runs with the Hardened Runtime.
 
 ## Known limitations

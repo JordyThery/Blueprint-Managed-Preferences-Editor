@@ -23,6 +23,9 @@ final class AppModel {
     let profileStore: ProfileStore
     /// JTKit's activity log (Window › Activity Log, ⇧⌘L), filled by the Jamf client.
     let activityLog = ActivityLog()
+    /// JTKit's waits before a retry ("Jamf asked to wait 40 s"), shown with
+    /// Stop while a Blueprint is read, saved, deployed or restored.
+    let waits = RequestWaits()
     /// Where requests for real connections go: the network, or a fake server
     /// in tests. Also while demo mode is on (Test Connection in Settings).
     let session: URLSession
@@ -68,7 +71,7 @@ final class AppModel {
     /// Whether a Blueprint may not be written: assigned to a division, or
     /// refused for that before.
     func isReadOnly(_ id: String) -> Bool {
-        readOnlyBlueprintIDs.contains(id) || details[id]?.isDivisionLocked == true
+        readOnlyBlueprintIDs.contains(id) || details[id]?.isAssignedToDivision == true
     }
 
     var sidebarFilter: SidebarFilter = .managedPreferences
@@ -211,7 +214,7 @@ final class AppModel {
         tenantDidChangeIfNeeded()
         if demo.isOn { return try currentDemoClient() }
         guard let profile = profileStore.selectedProfile,
-              let credentials = profileStore.credentials(for: profile) else {
+              let credentials = try profileStore.credentials(for: profile) else {
             throw APIError.missingCredentials
         }
         if let client, client.credentials == credentials {
@@ -230,7 +233,7 @@ final class AppModel {
     /// A client for a real connection, on the real network, also while demo
     /// mode is on (Test Connection).
     func makeClient(credentials: PlatformCredentials) throws -> JamfPlatform.Client {
-        try PlatformAPIClient.make(credentials: credentials, session: session, log: activityLog)
+        try PlatformAPIClient.make(credentials: credentials, session: session, log: activityLog, waits: waits)
     }
 
     /// The demo's client, with the app's allow-list; the first one also adds
@@ -240,7 +243,7 @@ final class AppModel {
         demo.jamfPlatformServer.add(DemoBlueprints.all)
         let source = demo.jamfPlatform()
         let made = try PlatformAPIClient.make(connection: source.connection, secret: source.secret,
-                                              session: source.session, log: activityLog)
+                                              session: source.session, log: activityLog, waits: waits)
         demoClient = made
         return made
     }
@@ -349,6 +352,8 @@ final class AppModel {
         do {
             list = try await service.list()
         } catch is CancellationError {
+            // Stop during a wait before a retry; a canceled refresh says nothing.
+            if !Task.isCancelled { discoveryState = .failed(Self.stoppedText) }
             return
         } catch {
             discoveryState = .failed(error.localizedDescription)
@@ -399,7 +404,7 @@ final class AppModel {
                 case .success(let detail):
                     store(detail)
                 case .failure(let error):
-                    detailErrors[id] = error.localizedDescription
+                    detailErrors[id] = error is CancellationError ? Self.stoppedText : error.localizedDescription
                 }
                 completed += 1
                 discoveryState = .fetchingDetails(completed: completed, total: list.count)
@@ -410,6 +415,9 @@ final class AppModel {
         discoveryState = .finished(Date())
     }
 
+    /// After Stop during a wait before a retry.
+    static let stoppedText = "You stopped waiting for Jamf. Refresh to read the Blueprints again."
+
     /// Fetches one Blueprint by ID, whether or not it contains Managed Preferences.
     /// Nothing is stored when the connection changed while it was read.
     func fetchBlueprint(id: String) async throws {
@@ -417,7 +425,12 @@ final class AppModel {
         guard !trimmed.isEmpty else { return }
         let service = try currentService()
         let generation = connectionGeneration
-        let detail = try await service.detail(id: trimmed)
+        let detail: JamfPlatform.BlueprintDetail
+        do {
+            detail = try await service.detail(id: trimmed)
+        } catch is CancellationError where connectionGeneration == generation {
+            throw APIError.stoppedWaiting
+        }
         guard connectionGeneration == generation else { throw CancellationError() }
         store(detail)
         // Make sure the fetched Blueprint is visible even if it has no Managed Preferences payload.

@@ -228,7 +228,10 @@ private struct FetchByIDSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                if isFetching { ProgressView().controlSize(.small) }
+                if isFetching {
+                    ProgressView().controlSize(.small)
+                    RetryWaitStatus()
+                }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)

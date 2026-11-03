@@ -36,7 +36,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
     }
 
     func test3SettingsTabs() {
-        checkSettingsTabs(["General", "Connections", "Updates"])
+        checkSettingsTabs(["Connections", "Updates"])
     }
 
     func test4ConnectionsEditor() {

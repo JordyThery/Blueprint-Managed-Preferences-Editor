@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0
+
+- When Jamf asks the app to wait before trying a request again, the wait is now shown while Blueprints are read, saved, deployed or restored, with **Stop** to end it. A wait lasts at most 60 seconds (it could be two minutes). After Stop, the message says whether anything reached Jamf.
+- **Deploy…**, **Save** and **Restore** now also stop when someone changed the Blueprint’s steps or scope on the server since you loaded it, so a deployment never goes to a scope you didn’t confirm.
+- A locked Keychain, or one that refuses access, is now reported as a Keychain problem instead of “No complete connection is configured”.
+- A Blueprint is marked read-only for a division only when Jamf names a division; an empty division value no longer locks it. A Blueprint whose changes Jamf refuses for a division is still marked read-only.
+- After correcting a connection’s region in Settings › Connections, **Test Connection** and **Load Environments** use the stored client secret, without retyping it.
+- The Environment ID must be a UUID, as shown in Jamf Account: the connection editor says so under the field, and nothing is sent until it’s corrected.
+- Settings no longer has a General tab: the app follows your Mac’s Light or Dark appearance.
+- Settings › Connections asks before closing or switching tabs with unsaved connection edits.
+- The Activity Log can copy its entries, with or without device identifiers masked.
+- Backups are now readable by your user account only. Existing backups stay listed and restorable.
+- Deployment state badges and warnings are easier to read, also with Increase Contrast.
+
 ## 1.1.0 (2026-10-31)
 
 - **Demo Mode**: try the app without a Jamf tenant. Turn it on in the connection picker or the Connection menu, or with **Try Demo Mode** when no connection is set up. The picker reads "Contoso (Demo)" and every window title ends in "— Demo". Sample Contoso Blueprints with Managed Preferences (Microsoft AutoUpdate with Forced, Set-Once and Often settings, Outlook, Chrome with nested settings and a list, a helpdesk app) can be edited, saved, deployed and restored inside the app; nothing is sent to a tenant, and everything resets when the app quits. Backups made in demo mode go to a temporary folder, never your real Backups folder. Saved connections and Keychain items are never touched, and Test Connection in Settings always uses the real connection. With unsaved edits, turning Demo Mode on or off asks first.

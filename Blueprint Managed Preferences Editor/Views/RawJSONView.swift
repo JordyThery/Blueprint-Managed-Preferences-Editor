@@ -103,7 +103,7 @@ struct BlueprintHeader: View {
                     .lineLimit(2)
                 Spacer(minLength: 4)
                 if let state = detail.overview.deploymentState?.state {
-                    DeploymentStateBadge(state: state)
+                    StatusBadge(state.displayName, style: state.badgeStyle)
                 }
             }
             if let updated = detail.overview.updated {

@@ -147,6 +147,18 @@ final class SaveTests {
         #expect(!edited.modifySettings("Edit", domainID: domain.id, entryID: entry.id) { $0.removeAll() })
     }
 
+    /// Only a non-empty `divisionId` string is a division: null, an empty
+    /// string or another kind of value leaves the Blueprint editable (a 409
+    /// from Jamf would still make it read-only).
+    @Test(arguments: [#""divisionId":null,"#, #""divisionId":"","#, #""divisionId":"  ","#, #""divisionId":0,"#, ""])
+    func aBlueprintWithoutADivisionStringIsEditable(field: String) throws {
+        let json = emailBlueprintJSON.replacingOccurrences(of: #""scope":"#, with: field + #""scope":"#)
+        let server = MockServer { _ in Issue.record("No request may be sent"); return .json(500, "{}") }
+        let (app, editor) = try makeApp(server, json: json)
+        #expect(!app.isReadOnly(Self.blueprintID))
+        #expect(try #require(editor).canEdit)
+    }
+
     /// Deploy… is blocked on a division-locked Blueprint, like Save.
     @Test func aDivisionLockedBlueprintCannotBeDeployed() async throws {
         let locked = emailBlueprintJSON.replacingOccurrences(of: #""scope":"#, with: #""divisionId":"d-1","scope":"#)
@@ -178,6 +190,41 @@ final class SaveTests {
         #expect(edited.isDirty, "The edits are kept")
         #expect(edited.document.hasChanges)
         withExtendedLifetime(app) {} // the editor holds the app unowned
+    }
+
+    /// Correcting a saved connection's region keeps its stored secret:
+    /// Test Connection with nothing typed signs in with it, in the new region.
+    @Test func testConnectionAfterARegionChangeUsesTheStoredSecret() async throws {
+        let server = MockServer { request in
+            request.path == "/auth/token" ? Self.token : .json(200, #"{"totalCount":3,"results":[]}"#)
+        }
+        let (app, _) = try makeApp(server)
+        var profile = try #require(app.profileStore.selectedProfile)
+        profile.region = .us
+
+        let message = try await app.testConnection(profile, typedSecret: nil)
+
+        #expect(message == "Connected · 3 Blueprints")
+        let signIn = try #require(server.requests.first { $0.path == "/auth/token" })
+        #expect(signIn.url.host()?.hasPrefix("us.") == true, "\(signIn.url)")
+        #expect(String(decoding: signIn.body, as: UTF8.self).contains("s3cr3t"))
+    }
+
+    /// An Environment ID that isn't a UUID is refused before any request,
+    /// with JTKit's sentence (the connection editor shows the same one).
+    @Test func anEnvironmentIDThatIsntAUUIDSendsNothing() throws {
+        let server = MockServer { _ in Issue.record("No request may be sent"); return .json(500, "{}") }
+        let (app, _) = try makeApp(server)
+        var profile = try #require(app.profileStore.selectedProfile)
+        profile.environmentID = "\"5f1e2d3c-4b5a-4968-8776-655443322110\""
+        try app.profileStore.connections.save(profile)
+        do {
+            _ = try app.currentClient()
+            Issue.record("Expected the Environment ID to be refused")
+        } catch {
+            #expect(error.localizedDescription.contains("isn’t a UUID"))
+        }
+        #expect(server.requests.isEmpty)
     }
 
     /// Test Connection names a missing read permission.

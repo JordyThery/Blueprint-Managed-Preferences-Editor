@@ -10,83 +10,48 @@ nonisolated struct BlueprintBackup: Identifiable, Hashable, Sendable {
     var id: URL { url }
 }
 
-/// Writes the full JamfPlatform.BlueprintDetail JSON before every PATCH to
-/// `~/Library/Application Support/Blueprint Managed Preferences Editor/Backups/<blueprintId>/<timestamp>.json`.
+/// Writes the full Blueprint JSON before every save and restore, with JTKit's
+/// `TimestampedBackupStore`, to
+/// `~/Library/Application Support/Blueprint Managed Preferences Editor/Backups/<blueprintId>/<timestamp>.json`:
+/// the exact bytes received, never overwritten, readable by the user only.
+/// Backups written by earlier versions have the same folder and file names,
+/// so they stay listed and restorable.
 nonisolated enum BackupStore {
     struct BackupError: Error, LocalizedError {
         let message: String
         var errorDescription: String? { message }
     }
 
+    /// The usual place. Under JTKit's live-check switch (release check) the
+    /// run's own folder instead, never the real Backups folder.
     static var rootURL: URL {
+        LiveLaunch.appFilesFolder("Backups") ?? savedRootURL
+    }
+
+    /// Where backups of real connections are kept on an ordinary launch.
+    static var savedRootURL: URL {
         URL.applicationSupportDirectory
             .appending(path: "Blueprint Managed Preferences Editor", directoryHint: .isDirectory)
             .appending(path: "Backups", directoryHint: .isDirectory)
     }
 
-    /// The Blueprint's own folder, always directly inside `root`: "/" and ":"
-    /// become "_", and an ID that is empty or only dots ("..") is replaced by
-    /// underscores, so a server-supplied ID can't point outside `root`.
+    /// The Blueprint's own folder, always directly inside `root`.
     static func directory(for blueprintID: String, root: URL = rootURL) -> URL {
-        var safe = blueprintID.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
-        if safe.allSatisfy({ $0 == "." }) {
-            safe = String(repeating: "_", count: max(safe.count, 1))
-        }
-        return root.appending(path: safe, directoryHint: .isDirectory)
+        TimestampedBackupStore(root: root).directory(for: blueprintID)
     }
 
-    /// File names sort chronologically and contain no colons: `2026-10-07T14-03-11.123Z.json`.
-    private static let fileNameFormat = Date.VerbatimFormatStyle(
-        format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits)T\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased))-\(minute: .twoDigits)-\(second: .twoDigits).\(secondFraction: .fractional(3))Z",
-        timeZone: .gmt,
-        calendar: Calendar(identifier: .gregorian)
-    )
-
-    /// Writes the exact bytes of `detail` as received from the server.
+    /// Writes the exact bytes of `detail` as received from the server; a
+    /// second backup in the same millisecond gets "-2", "-3" ….
     @discardableResult
     static func write(_ detail: JamfPlatform.BlueprintDetail, date: Date = Date(), root: URL = rootURL) throws -> URL {
-        let directory = directory(for: detail.id, root: root)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            var url = directory.appending(path: "\(date.formatted(fileNameFormat)).json")
-            var counter = 2
-            while FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
-                url = directory.appending(path: "\(date.formatted(fileNameFormat))-\(counter).json")
-                counter += 1
-            }
-            // `.withoutOverwriting` creates the file exclusively, so an existing
-            // backup is never replaced. Foundation rejects it combined with `.atomic`.
-            try detail.rawData.write(to: url, options: .withoutOverwriting)
-            return url
-        } catch {
-            throw BackupError(message: "Could not write backup to \(directory.path(percentEncoded: false)): \(error.localizedDescription)")
-        }
+        try TimestampedBackupStore(root: root).write(detail.rawData, for: detail.id, date: date)
     }
 
-    /// Backups for one Blueprint, newest first.
+    /// Backups for one Blueprint, newest first ("-2" … "-10" in order).
     static func backups(for blueprintID: String, root: URL = rootURL) -> [BlueprintBackup] {
-        let directory = directory(for: blueprintID, root: root)
-        let keys: [URLResourceKey] = [.fileSizeKey, .creationDateKey]
-        guard let urls = try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
-        ) else { return [] }
-        return urls
-            .filter { $0.pathExtension == "json" }
-            .map { url in
-                let values = try? url.resourceValues(forKeys: Set(keys))
-                return BlueprintBackup(
-                    url: url,
-                    blueprintID: blueprintID,
-                    date: values?.creationDate ?? .distantPast,
-                    size: values?.fileSize ?? 0
-                )
-            }
-            // Numeric comparison of the name without ".json", so a same-millisecond
-            // "-2" counter sorts after its base name instead of before it.
-            .sorted {
-                $0.url.deletingPathExtension().lastPathComponent
-                    .compare($1.url.deletingPathExtension().lastPathComponent, options: .numeric) == .orderedDescending
-            }
+        TimestampedBackupStore(root: root).backups(for: blueprintID).map {
+            BlueprintBackup(url: $0.url, blueprintID: blueprintID, date: $0.date, size: $0.size)
+        }
     }
 
     static func load(_ backup: BlueprintBackup) throws -> JamfPlatform.BlueprintDetail {

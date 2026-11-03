@@ -73,18 +73,18 @@ private struct DiscoveryStatusView: View {
             case .listing:
                 ProgressView().controlSize(.small)
                 Text("Listing Blueprints…")
+                RetryWaitStatus()
             case .fetchingDetails(let completed, let total):
                 ProgressView(value: Double(completed), total: Double(max(total, 1)))
                     .frame(width: 80)
                 Text("Reading \(completed) of \(total)")
+                RetryWaitStatus()
             case .finished(let date):
                 Image(systemName: "checkmark.circle")
                     .foregroundStyle(.secondary)
                 Text("\(model.managedPreferencesCount) of \(model.overviews.count) with Managed Preferences · \(date.formatted(date: .omitted, time: .shortened))")
             case .failed(let message):
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(message)
+                WarningLabel(message)
                     .lineLimit(3)
                     .help(message)
             }
@@ -125,7 +125,7 @@ struct BlueprintRow: View {
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if let state = overview.deploymentState?.state {
-                    DeploymentStateBadge(state: state)
+                    StatusBadge(state.displayName, style: state.badgeStyle)
                 }
             }
             if let date = overview.updatedDate {
@@ -134,9 +134,8 @@ struct BlueprintRow: View {
                     .foregroundStyle(.secondary)
             }
             if let error {
-                Label(error, systemImage: "exclamationmark.triangle")
+                WarningLabel(error)
                     .font(.caption)
-                    .foregroundStyle(.orange)
                     .lineLimit(2)
             } else if !domains.isEmpty {
                 Text(domains.joined(separator: ", "))
@@ -146,27 +145,5 @@ struct BlueprintRow: View {
             }
         }
         .padding(.vertical, 2)
-    }
-}
-
-struct DeploymentStateBadge: View {
-    let state: JamfPlatform.BlueprintState
-
-    var body: some View {
-        Text(state.displayName)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.18), in: Capsule())
-            .foregroundStyle(color)
-    }
-
-    private var color: Color {
-        switch state {
-        case .deployed: .green
-        case .outOfDate: .orange
-        case .notDeployed: .secondary
-        case .other: .blue
-        }
     }
 }

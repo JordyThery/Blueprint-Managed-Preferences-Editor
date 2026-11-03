@@ -48,16 +48,20 @@ nonisolated enum PlatformAPIClient {
 
     /// - Parameters:
     ///   - log: JTKit's activity log; nil records nothing (tests).
+    ///   - waits: shows each wait before a retry (JTKit's default longest
+    ///     wait, 60 s) while it lasts, so it can be stopped.
     ///   - sleep: the wait before a retry, injectable for tests.
     /// - Throws: `JamfPlatform.APIError` when the Environment ID isn't a UUID.
     static func make(
         credentials: PlatformCredentials,
         session: URLSession = .shared,
         log: ActivityLog?,
+        waits: RequestWaits? = nil,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) throws -> JamfPlatform.Client {
         let secret = credentials.clientSecret
-        return try make(connection: credentials.connection, secret: { secret }, session: session, log: log, sleep: sleep)
+        return try make(connection: credentials.connection, secret: { secret }, session: session, log: log,
+                        waits: waits, sleep: sleep)
     }
 
     /// The same for a connection and a way to read its secret, e.g. JTKit's
@@ -67,12 +71,13 @@ nonisolated enum PlatformAPIClient {
         secret: @escaping @Sendable () throws -> String,
         session: URLSession,
         log: ActivityLog?,
+        waits: RequestWaits? = nil,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) throws -> JamfPlatform.Client {
         try JamfPlatform.Client(
             connection: connection,
             secret: secret,
-            recorder: recorder(named: connection.name, session: session, log: log),
+            recorder: recorder(named: connection.name, session: session, log: log, waits: waits),
             permits: permits,
             hints: hints(for:),
             sleep: sleep
@@ -80,16 +85,18 @@ nonisolated enum PlatformAPIClient {
     }
 
     /// Writes this tenant's requests to the activity log, under its name.
-    static func recorder(for credentials: PlatformCredentials, session: URLSession = .shared, log: ActivityLog?) -> RequestRecorder {
-        recorder(named: credentials.connectionName, session: session, log: log)
+    static func recorder(for credentials: PlatformCredentials, session: URLSession = .shared, log: ActivityLog?,
+                         waits: RequestWaits? = nil) -> RequestRecorder {
+        recorder(named: credentials.connectionName, session: session, log: log, waits: waits)
     }
 
-    private static func recorder(named name: String, session: URLSession, log: ActivityLog?) -> RequestRecorder {
+    private static func recorder(named name: String, session: URLSession, log: ActivityLog?, waits: RequestWaits?) -> RequestRecorder {
         RequestRecorder(
             session: session,
             log: log,
             service: ConnectionService.jamfPlatform.displayName,
-            connection: name.isEmpty ? nil : name
+            connection: name.isEmpty ? nil : name,
+            waits: waits
         )
     }
 

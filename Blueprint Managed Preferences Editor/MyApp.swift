@@ -28,7 +28,7 @@ import SwiftUI
         )
         .environment(model.demo)
 
-        // JTKit's Settings window: General (Appearance), Connections, Updates.
+        // JTKit's Settings window: Connections, Updates.
         SettingsWindow(updates: model.updates, opensTabsByName: true) {
             ConnectionsTab()
                 .environment(model)
