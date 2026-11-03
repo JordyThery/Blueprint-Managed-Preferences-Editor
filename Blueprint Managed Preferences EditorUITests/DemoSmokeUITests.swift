@@ -36,7 +36,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
     }
 
     func test3SettingsTabs() {
-        checkSettingsTabs(["General", "Connections", "Updates"])
+        checkSettingsTabs(["Connections", "Updates"])
     }
 
     func test4ConnectionsEditor() {
@@ -76,8 +76,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
 
         let saved = app.descendants(matching: .any)
             .matching(NSPredicate(format: "value BEGINSWITH %@ OR label BEGINSWITH %@", "“\(microsoft365)” was saved", "“\(microsoft365)” was saved")).firstMatch
-        XCTAssertTrue(saved.waitForExistence(timeout: 20), "The save didn't finish with “Saved”")
-        tap(dialogButton("OK"))
+        XCTAssertTrue(saved.waitForExistence(timeout: 20), "The save didn't finish with “Saved” in the window")
         XCTAssertFalse(app.buttons["Save…"].firstMatch.isEnabled, "Save is still enabled after saving")
         XCTAssertTrue(app.buttons["Deploy…"].firstMatch.isEnabled, "Deploy… is still disabled after saving")
     }

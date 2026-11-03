@@ -16,6 +16,16 @@ nonisolated extension JamfPlatform.BlueprintDetail {
         return payloads.flatMap(\.domains).filter { seen.insert($0).inserted }
     }
 
+    /// Assigned to a division, so Jamf refuses changes through the API: only
+    /// when `divisionId` is a non-empty string. Null, an empty string or no
+    /// `divisionId` at all is no division; a PATCH that Jamf still refuses
+    /// with 409 `DIVISION_PATCH_NOT_ALLOWED` makes the Blueprint read-only
+    /// then (`AppModel.readOnlyBlueprintIDs`).
+    var isAssignedToDivision: Bool {
+        guard let division = json["divisionId"]?.stringValue else { return false }
+        return !division.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Human-readable scope for confirmations.
     var scopeDescription: String {
         let groups = scopeDeviceGroups

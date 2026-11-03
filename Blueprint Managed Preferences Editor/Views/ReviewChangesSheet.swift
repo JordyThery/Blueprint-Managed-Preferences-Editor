@@ -4,6 +4,8 @@ import SwiftUI
 /// Shows old and new values per domain and key before saving.
 struct ReviewChangesSheet: View {
     let editor: EditorModel
+    /// Opened from Blueprint › Save & Deploy…: asks the deploy question first.
+    var startsWithDeploy = false
     @Environment(\.dismiss) private var dismiss
     @State private var isConfirmingDeploy = false
 
@@ -81,6 +83,7 @@ struct ReviewChangesSheet: View {
             .padding()
         }
         .frame(width: 760, height: 540)
+        .onAppear { if startsWithDeploy && !changes.isEmpty { isConfirmingDeploy = true } }
         .confirmationDialog(
             "Save and deploy “\(editor.base.overview.name)”?",
             isPresented: $isConfirmingDeploy,
@@ -105,25 +108,27 @@ private struct ChangeRow: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .foregroundStyle(color)
+                    .accessibilityLabel(kindName)
                 Text(change.keyPath)
                     .font(.callout.monospaced().weight(.medium))
                     .textSelection(.enabled)
             }
             if let old = change.oldValue {
-                valueLine(prefix: "−", text: old, color: .red)
+                valueLine(prefix: "−", text: old, color: .red, spoken: "Old value")
             }
             if let new = change.newValue {
-                valueLine(prefix: "+", text: new, color: .green)
+                valueLine(prefix: "+", text: new, color: .green, spoken: "New value")
             }
         }
         .padding(.vertical, 2)
     }
 
-    private func valueLine(prefix: String, text: String, color: Color) -> some View {
+    private func valueLine(prefix: String, text: String, color: Color, spoken: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(prefix)
                 .font(.callout.monospaced().weight(.bold))
                 .foregroundStyle(color)
+                .accessibilityLabel(spoken)
             Text(text)
                 .font(.callout.monospaced())
                 .lineLimit(4)
@@ -137,6 +142,14 @@ private struct ChangeRow: View {
         case .added: "plus.circle.fill"
         case .removed: "minus.circle.fill"
         case .changed: "pencil.circle.fill"
+        }
+    }
+
+    private var kindName: String {
+        switch change.kind {
+        case .added: "Added"
+        case .removed: "Removed"
+        case .changed: "Changed"
         }
     }
 

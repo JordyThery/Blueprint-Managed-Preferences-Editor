@@ -1,9 +1,9 @@
 import JTKit
 import SwiftUI
 
-/// The Connections tab of JTKit's Settings window (`SettingsWindow`), between
-/// its General tab (Appearance) and its Updates tab: JTKit's shared list and
-/// editor for the saved Jamf Platform API connections.
+/// The Connections tab of JTKit's Settings window (`SettingsWindow`), before
+/// its Updates tab: JTKit's shared list and editor for the saved Jamf
+/// Platform API connections.
 struct ConnectionsTab: View {
     @Environment(AppModel.self) private var model
 
@@ -20,8 +20,25 @@ struct ConnectionsTab: View {
             test: { profile, typed in try await model.testConnection(profile, typedSecret: typed[.main]) },
             environments: { profile, typed in try await model.environments(for: profile, typedSecret: typed[.main]) }
         )
+        .safeAreaInset(edge: .bottom) {
+            // Test Connection and Load Environments wait here, with their own Stop.
+            HStack {
+                RetryWaitStatus(waits: model.settingsWaits)
+                Spacer()
+            }
+            .padding(.horizontal)
+        }
         .confirmsConnectionSwitch(from: .settings)
         .onChange(of: store.profiles) { store.profilesDidChange() }
+        .alert(
+            model.settingsNotice?.title ?? "",
+            isPresented: Binding(get: { model.settingsNotice != nil }, set: { if !$0 { model.settingsNotice = nil } }),
+            presenting: model.settingsNotice
+        ) { _ in
+            Button("OK") {}
+        } message: { notice in
+            Text(notice.message)
+        }
     }
 }
 
@@ -30,28 +47,28 @@ extension AppModel {
     /// checked without writing, so they stay in the footer.
     static let readChecks: [JamfPlatform.PermissionCheck] = [.blueprintsRead]
 
-    /// Test Connection in Settings: signs in, then checks that the Blueprint
-    /// list can be read, with the editor's values, saved or not. A secret
-    /// typed in the editor is used instead of the stored one.
+    /// Test Connection in Settings (JTKit's `testConnection`): signs in,
+    /// checks that the Blueprint list can be read, and says how many
+    /// Blueprints there are, with the editor's values, saved or not. A secret
+    /// typed in the editor is used instead of the stored one; a Keychain
+    /// that can't be read is reported as such.
     func testConnection(_ profile: ConnectionProfile, typedSecret: String?) async throws -> String {
-        let secret = typedSecret ?? profileStore.secret(for: profile) ?? ""
-        let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret))
-        try await client.signIn()
-        let results = await client.checkPermissions(Self.readChecks)
-        if let problem = JamfPlatform.PermissionProblem(results) { throw problem }
-        let page = try await JamfPlatform.Blueprints(client: client).listPage(page: 0, pageSize: 1)
-        let count = page.totalCount.map { counted($0, "Blueprint") } ?? "Blueprints readable"
-        return "Connected · \(count)"
+        let secret = try typedSecret ?? profileStore.secret(for: profile) ?? ""
+        let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret), waits: settingsWaits)
+        return try await client.testConnection(checks: Self.readChecks) {
+            let page = try await JamfPlatform.Blueprints(client: client).listPage(page: 0, pageSize: 1)
+            return page.totalCount.map { counted($0, "Blueprint") } ?? "Blueprints readable"
+        }
     }
 
     /// Load Environments in Settings: the environments the editor's
     /// integration can see. No Environment ID is needed for this.
     func environments(for profile: ConnectionProfile, typedSecret: String?) async throws -> [JamfPlatform.Environment] {
-        let secret = (typedSecret ?? profileStore.secret(for: profile) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let secret = (try typedSecret ?? profileStore.secret(for: profile) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let credentials = PlatformCredentials(profile: profile, secret: secret)
         return try await JamfPlatform.environments(
             for: credentials.connection, secret: { secret },
-            recorder: PlatformAPIClient.recorder(for: credentials, session: session, log: activityLog),
+            recorder: PlatformAPIClient.recorder(for: credentials, session: session, log: activityLog, waits: settingsWaits),
             permits: PlatformAPIClient.permits)
     }
 }

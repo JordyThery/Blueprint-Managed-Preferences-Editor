@@ -98,10 +98,19 @@ final class ConnectionStorageTests {
         try saveTheOldWay(oldProfiles)
         let store = ProfileStore(defaults: defaults, secrets: secrets)
 
-        #expect(store.credentials(for: oldProfiles[0])?.clientSecret == "old-secret")
+        #expect(try store.credentials(for: oldProfiles[0])?.clientSecret == "old-secret")
 
         try store.connections.save(oldProfiles[1], secrets: [.main: "new-secret"])
         #expect(secrets.all[second.uuidString] == "new-secret")
+    }
+
+    /// A locked Keychain, or one that refuses access, is a Keychain problem,
+    /// not "no connection configured".
+    @Test func aKeychainThatCantBeReadIsReportedAsSuch() throws {
+        try saveTheOldWay(oldProfiles)
+        let app = AppModel(profileStore: ProfileStore(defaults: defaults, secrets: LockedKeychain()))
+        #expect(throws: SecretStoreError.self) { try app.currentClient(waits: app.discoveryWaits) }
+        #expect(throws: SecretStoreError.self) { try app.profileStore.credentials(for: oldProfiles[0]) }
     }
 
     @Test func surroundingSpacesAreRemovedFromTheSecret() throws {
@@ -109,7 +118,7 @@ final class ConnectionStorageTests {
         try saveTheOldWay(oldProfiles)
         let store = ProfileStore(defaults: defaults, secrets: secrets)
 
-        #expect(store.credentials(for: oldProfiles[0])?.clientSecret == "old-secret")
+        #expect(try store.credentials(for: oldProfiles[0])?.clientSecret == "old-secret")
     }
 
     @Test func theKeychainItemsKeepTheirServiceAndLabel() {
@@ -175,5 +184,14 @@ final class ConnectionStorageTests {
 
     @Test func theMenuShowsTheNameAndRegion() {
         #expect(oldProfiles[0].menuTitle == "Production (eu)")
+    }
+}
+
+/// A Keychain that can't be read (locked, or access refused).
+private struct LockedKeychain: SecretStore {
+    func secret(for account: String) -> String? { nil }
+    func setSecret(_ secret: String?, for account: String) -> Bool { false }
+    func readSecret(for account: String) throws -> String? {
+        throw SecretStoreError(status: -25308) // errSecInteractionNotAllowed
     }
 }

@@ -61,3 +61,11 @@ nonisolated extension ConnectionProfile: ConnectionRecord {
         }
     }
 }
+
+nonisolated extension ConnectionProfile {
+    /// A profile for a JTKit connection (the live check's, see `ProfileStore`).
+    init(connection: Connection) {
+        self.init(id: connection.id, name: connection.name, region: connection.region,
+                  environmentID: connection.environmentID, clientID: connection.clientID)
+    }
+}

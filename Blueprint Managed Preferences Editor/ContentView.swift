@@ -13,7 +13,7 @@ struct ContentView: View {
         @Bindable var model = model
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 240, ideal: 300)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 300)
         } content: {
             if let id = model.selectedBlueprintID {
                 BlueprintColumnView(blueprintID: id)
@@ -32,6 +32,7 @@ struct ContentView: View {
             }
         } detail: {
             detail
+                .navigationSplitViewColumnWidth(min: 380, ideal: 700)
         }
         .navigationTitle("Blueprint Managed Preferences Editor")
         .toolbar {
@@ -83,9 +84,11 @@ struct ContentView: View {
             Text(notice.message)
         }
         .confirmsConnectionSwitch(from: .mainWindow)
-        .confirmsDemoModeSwitch(model.demo)
+        .modifier(DemoSwitchConfirmation(model: model))
         .background(WindowEditedMarker(isEdited: model.hasUnsavedChanges))
-        .frame(minWidth: 1100, minHeight: 600)
+        .background(MainWindowKeyTracker(model: model))
+        // The three columns at their narrowest (220 + 260 + 380).
+        .frame(minWidth: 860, minHeight: 520)
     }
 
     @ViewBuilder
@@ -113,7 +116,7 @@ struct ContentView: View {
                 Text("Add a Jamf Platform API connection in Settings, or try the app with sample data.")
             } actions: {
                 SettingsLink { Text("Open Settings…") }
-                Button("Try Demo Mode") { model.demo.requestSwitch(to: true) }
+                Button("Try Demo Mode") { model.requestDemoSwitch(to: true) }
             }
         } else {
             ContentUnavailableView(
@@ -122,6 +125,65 @@ struct ContentView: View {
                 description: Text("Refresh to discover Blueprints, or fetch a known Blueprint by ID.")
             )
         }
+    }
+}
+
+/// JTKit's "Turn on/off Demo Mode and discard unsaved changes?", confirmed
+/// through `AppModel.confirmDemoSwitch`, which refuses again while an
+/// operation runs.
+private struct DemoSwitchConfirmation: ViewModifier {
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        let target = model.demo.pendingSwitch ?? !model.demo.isOn
+        content.confirmationDialog(
+            "Turn \(target ? "on" : "off") \(DemoMode.title) and discard unsaved changes?",
+            isPresented: Binding(
+                get: { model.demo.pendingSwitch != nil },
+                set: { if !$0 { model.demo.cancelSwitch() } }
+            )
+        ) {
+            Button("Discard and Turn \(target ? "On" : "Off")", role: .destructive) { model.confirmDemoSwitch() }
+            Button("Cancel", role: .cancel) { model.demo.cancelSwitch() }
+        }
+    }
+}
+
+/// Keeps `AppModel.isMainWindowKey` up to date: the Blueprint menu acts only
+/// while the main window is in front.
+private struct MainWindowKeyTracker: NSViewRepresentable {
+    let model: AppModel
+
+    final class Coordinator {
+        var observers: [NSObjectProtocol] = []
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        let model = model
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            context.coordinator.observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak view] _ in
+                MainActor.assumeIsolated {
+                    model.isMainWindowKey = view?.window?.isKeyWindow == true
+                }
+            })
+        }
+        DispatchQueue.main.async { [weak view] in
+            model.isMainWindowKey = view?.window?.isKeyWindow == true
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+        coordinator.observers.forEach(NotificationCenter.default.removeObserver)
+        coordinator.observers = []
     }
 }
 
@@ -154,8 +216,22 @@ private struct ProfilePicker: View {
             label: model.demo.isOn ? .demo(.demoJamfPlatform) : nil,
             help: model.demo.isOn ? DemoMode.helpText : nil
         ) {
-            DemoModeToggle(demo: model.demo)
+            AppDemoModeToggle(model: model)
         }
+    }
+}
+
+/// JTKit's Demo Mode item, through `AppModel.requestDemoSwitch`: refused
+/// with a sentence while a save, deploy, restore or reload runs.
+struct AppDemoModeToggle: View {
+    let model: AppModel
+    var whenAsking: () -> Void = {}
+
+    var body: some View {
+        Toggle(DemoMode.title, isOn: Binding(
+            get: { model.demo.isOn },
+            set: { if model.requestDemoSwitch(to: $0) { whenAsking() } }
+        ))
     }
 }
 
@@ -221,14 +297,22 @@ private struct FetchByIDSheet: View {
                 .font(.body.monospaced())
                 .onSubmit(fetch)
             if let errorMessage {
-                Text(errorMessage)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                Label {
+                    Text(errorMessage)
+                } icon: {
+                    Image(systemName: "xmark.octagon.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityHidden(true)
+                }
+                .font(.callout)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                if isFetching { ProgressView().controlSize(.small) }
+                if isFetching {
+                    ProgressView().controlSize(.small)
+                    RetryWaitStatus(waits: model.discoveryWaits)
+                }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -260,7 +344,11 @@ private struct FetchByIDSheet: View {
 }
 
 #Preview {
-    let model = AppModel()
+    // Demo mode with in-memory connections: never the saved ones or the Keychain.
+    let model = AppModel(profileStore: ProfileStore(defaults: DemoMode.sandboxDefaults(), secrets: SandboxSecretStore()),
+                         backupRoot: FileManager.default.temporaryDirectory,
+                         demo: DemoMode(key: AppModel.demoModeKey, defaults: DemoMode.sandboxDefaults(),
+                                        arguments: [DemoMode.launchArgument, "YES"]))
     ContentView()
         .environment(model)
         .environment(model.updates)

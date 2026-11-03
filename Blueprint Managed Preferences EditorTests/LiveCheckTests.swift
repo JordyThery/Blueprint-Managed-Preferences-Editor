@@ -151,6 +151,46 @@ struct LiveSignInTests {
     }
 }
 
+@MainActor
+@Suite("Live: Blueprint list paging", .enabled(if: live), .serialized)
+struct LivePagingTests {
+    /// The paging rule JTKit's list follows (`hasNext` when Jamf sends it,
+    /// else `totalCount`), checked against the real Blueprint list: read in
+    /// small pages, every page's `hasNext` must agree with what `totalCount`
+    /// says, and the whole list must hold `totalCount` Blueprints. Reads only.
+    @Test func hasNextAgreesWithTotalCount() async throws {
+        let run = try LiveCheckRun.current()
+        guard run.roles.contains(LiveTenant.role) else { return }
+        let target = try LiveTenant(run: run)
+        let first = try await target.blueprints.listPage(page: 0, pageSize: 1)
+        let total = try #require(first.totalCount, "The Blueprint list sent no totalCount")
+        // About six pages, so several "has next" answers are seen.
+        let pageSize = max(1, Int((Double(total) / 6).rounded(.up)))
+        var received = 0
+        var pages: [(hasNext: Bool?, count: Int)] = []
+        var disagreements: [String] = []
+        for number in 0..<30 {
+            let page = try await target.blueprints.listPage(page: number, pageSize: pageSize)
+            received += page.results.count
+            pages.append((page.hasNext, page.results.count))
+            if let hasNext = page.hasNext, hasNext != (received < total) {
+                disagreements.append("page \(number): hasNext \(hasNext), \(received) of \(page.totalCount ?? total)")
+            }
+            if page.results.isEmpty || !(page.hasNext ?? (received < total)) { break }
+        }
+        let listed = try await target.blueprints.list(pageSize: pageSize).count
+        let sendsHasNext = pages.contains { $0.hasNext != nil }
+        let passed = disagreements.isEmpty && received == total && listed == total
+        let note = "totalCount \(total), \(pages.count) pages of \(pageSize), hasNext \(sendsHasNext ? "sent" : "not sent")"
+            + (disagreements.isEmpty ? ", agrees with totalCount" : ": \(disagreements.joined(separator: "; "))")
+            + ", list() read \(listed)"
+        print("LIVE-PAGING: \(note)")
+        run.record(step: "\(LiveTenant.role): Blueprint list paging (hasNext and totalCount)", passed: passed, note: note)
+        #expect(passed, "\(note)")
+        #expect(run.network.refusals.isEmpty, "\(run.network.refusals)")
+    }
+}
+
 // MARK: Stage 4: the main task, live
 
 @MainActor
@@ -219,11 +259,11 @@ struct LiveBlueprintTests {
         }
         let payloadPath = editor.document.payloads[0].path
         await editor.save(andDeploy: false)
-        let saved = changed && editor.alert?.title == "Saved" && !editor.isDirty
+        let saved = changed && editor.resultTitle == "Saved" && !editor.isDirty
         let backedUp = BackupStore.backups(for: blueprintID, root: backups).count == 1
-        #expect(saved && backedUp, "\(editor.alert?.title ?? "no alert"): \(editor.alert?.message ?? "")")
+        #expect(saved && backedUp, "\(editor.resultTitle ?? "no alert"): \(editor.resultMessage ?? "")")
         run.record(step: step("edit the key and save with the app's editor"), passed: saved && backedUp,
-                   note: editor.alert?.title)
+                   note: editor.resultTitle)
 
         // 4. Read back: the key is true, and the steps are otherwise as read
         //    after the create (the rest of the payload included).
@@ -246,7 +286,7 @@ struct LiveBlueprintTests {
         try #require(target.isEmptyStatic(beforeDeploy), "The test group has members now; not deploying")
         let previousStart = readBack.overview.deploymentState?.lastDeploymentStarted
         await editor.deploy()
-        #expect(editor.alert?.title == "Deployment Started", "\(editor.alert?.title ?? "no alert"): \(editor.alert?.message ?? "")")
+        #expect(editor.resultTitle == "Deployment Started", "\(editor.resultTitle ?? "no alert"): \(editor.resultMessage ?? "")")
         let outcome = try await target.blueprints.watchDeployment(id: blueprintID, previousStart: previousStart)
         let deployed = outcome.isFinished && outcome.value?.didSucceed == true
         #expect(deployed, "deployment \(outcome.value?.jobState ?? "unknown")")

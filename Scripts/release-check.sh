@@ -20,7 +20,9 @@ UI_TESTS="Blueprint Managed Preferences EditorUITests"
 SMOKE_CLASS="DemoSmokeUITests"
 SMOKE_FILE="$PWD/Blueprint Managed Preferences EditorUITests/DemoSmokeUITests.swift"
 SIGNIN_TEST="Blueprint Managed Preferences EditorTests/LiveSignInTests"
-LIVE_TESTS=("Blueprint Managed Preferences EditorTests/LiveBlueprintTests/tenantA()")
+LIVE_TESTS=("Blueprint Managed Preferences EditorTests/LivePagingTests/hasNextAgreesWithTotalCount()"
+            "Blueprint Managed Preferences EditorTests/LiveBlueprintTests/tenantA()"
+            "Blueprint Managed Preferences EditorUITests/LiveUITests/testEditAndSaveUnderTheSwitch")
 CLEANUP_TEST="Blueprint Managed Preferences EditorTests/LiveCleanupTests"
 ROLES=(jamf-test-a)
 # role:service:item, read from the Keychain service the allow-list names
@@ -46,6 +48,6 @@ else
         -clonedSourcePackagesDirPath "$PACKAGES" > /dev/null || exit 1
     LIB="$PACKAGES/checkouts/JTKit/Scripts/release-check-lib.sh"
 fi
-[[ -f "$LIB" ]] || { print -u2 "No release-check template at $LIB (JTKit 0.12.1 or later)"; exit 1 }
+[[ -f "$LIB" ]] || { print -u2 "No release-check template at $LIB (JTKit 1.4.0 or later)"; exit 1 }
 source "$LIB"
 release_check_main "$@"

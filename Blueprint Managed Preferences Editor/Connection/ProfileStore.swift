@@ -31,7 +31,10 @@ final class ProfileStore {
         connections = ConnectionStore(
             storage: UserDefaultsConnectionStorage(key: Self.profilesKey, defaults: defaults),
             secrets: [.main: SecretLocation(store: secrets)],
-            log: { logger.error("\($0, privacy: .public)") }
+            log: { logger.error("\($0, privacy: .public)") },
+            // Under JTKit's live-check switch (live UI tests): only the release
+            // check's connections, never the saved ones.
+            liveRecord: { ConnectionProfile(connection: $0) }
         )
         let storedSelection = defaults.string(forKey: Self.selectedKey).flatMap(UUID.init)
         // A stored selection that no longer matches a profile would read as "no connection".
@@ -78,15 +81,17 @@ final class ProfileStore {
         if selectedProfile == nil { selectedProfileID = profiles.first?.id }
     }
 
-    /// The stored client secret, or nil when there is none or the Keychain
-    /// can't be read (the error code goes to the log).
-    func secret(for profile: ConnectionProfile) -> String? {
-        connections.secret(for: profile.connection)
+    /// The stored client secret, or nil when there is none.
+    /// - Throws: JTKit's `SecretStoreError` when the Keychain can't be read
+    ///   (locked, or access refused): a Keychain problem, not "no secret".
+    func secret(for profile: ConnectionProfile) throws -> String? {
+        try connections.readSecret(for: profile.connection)
     }
 
     /// Nil when the profile is incomplete or has no stored secret.
-    func credentials(for profile: ConnectionProfile) -> PlatformCredentials? {
-        guard profile.isComplete, let secret = secret(for: profile), !secret.isEmpty else {
+    /// - Throws: `SecretStoreError` when the Keychain can't be read.
+    func credentials(for profile: ConnectionProfile) throws -> PlatformCredentials? {
+        guard profile.isComplete, let secret = try secret(for: profile), !secret.isEmpty else {
             return nil
         }
         return PlatformCredentials(profile: profile, secret: secret)

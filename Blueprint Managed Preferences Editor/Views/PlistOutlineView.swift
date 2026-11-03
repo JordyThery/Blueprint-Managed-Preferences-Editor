@@ -20,6 +20,8 @@ struct PlistOutlineView: View {
         let arrayIndex: Int?
         let children: [Row]?
         var id: PlistNode.ID { node.id }
+        /// The key, or "Item n", for VoiceOver.
+        var name: String { arrayIndex.map { "Item \($0)" } ?? (node.key.isEmpty ? "the new key" : node.key) }
 
         static func rows(from nodes: [PlistNode], inArray: Bool) -> [Row] {
             nodes.enumerated().map { index, node in
@@ -54,11 +56,13 @@ struct PlistOutlineView: View {
 
             TableColumn("Type") { row in
                 TypeCell(value: row.node.value, isEditable: isEditable) { actions.setType(row.id, $0) }
+                    .accessibilityLabel("Type of \(row.name)")
             }
             .width(min: 95, ideal: 110, max: 140)
 
             TableColumn("Value") { row in
                 ValueCell(value: row.node.value, isEditable: isEditable) { actions.setValue(row.id, $0) }
+                    .accessibilityLabel("Value of \(row.name)")
             }
         }
         .contextMenu(forSelectionType: PlistNode.ID.self) { ids in
@@ -157,7 +161,8 @@ private struct ValueCell: View {
 }
 
 /// A text field that commits on Return or when focus leaves, validates first,
-/// and reverts on Escape. Invalid input stays visible in red with the reason as a tooltip.
+/// and reverts on Escape. Invalid input stays visible with a red error symbol,
+/// the reason as a tooltip, and the reason read by VoiceOver.
 struct CommitTextField: View {
     let text: String
     var placeholder: String = ""
@@ -174,10 +179,11 @@ struct CommitTextField: View {
         TextField(placeholder, text: $draft)
             .textFieldStyle(.plain)
             .font(monospaced ? .body.monospaced() : .body)
-            .foregroundStyle(error == nil ? Color.primary : Color.red)
             .focused($isFocused)
             .disabled(!isEditable)
             .help(error ?? "")
+            .accessibilityLabel(placeholder.isEmpty ? "Value" : placeholder)
+            .accessibilityHint(error.map { "Not saved: \($0)" } ?? "")
             .onAppear { draft = text }
             .onChange(of: text) { draft = text; error = nil }
             .onSubmit(commitDraft)
@@ -193,6 +199,7 @@ struct CommitTextField: View {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundStyle(.red)
                         .help(error ?? "")
+                        .accessibilityLabel("Not saved: \(error ?? "")")
                 }
             }
     }

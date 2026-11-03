@@ -55,9 +55,8 @@ struct RestoreBackupSheet: View {
 
             HStack {
                 if editor.isDirty {
-                    Label("Unsaved edits will be discarded.", systemImage: "exclamationmark.triangle")
+                    WarningLabel("Unsaved edits will be discarded.")
                         .font(.caption)
-                        .foregroundStyle(.orange)
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
