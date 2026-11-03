@@ -107,8 +107,10 @@ private struct BlueprintMenuItems: View {
     let model: AppModel
     let showWindow: () -> Void
 
+    /// Nil unless the main window is in front: then ⌘S and the other
+    /// shortcuts are left to the window in front (Settings' own Save).
     private var editor: EditorModel? {
-        model.selectedBlueprintID.flatMap { model.editors[$0] }
+        model.commandEditor
     }
 
     private var selectedDomainID: PreferenceDomain.ID? {

@@ -84,8 +84,9 @@ struct ContentView: View {
             Text(notice.message)
         }
         .confirmsConnectionSwitch(from: .mainWindow)
-        .confirmsDemoModeSwitch(model.demo)
+        .modifier(DemoSwitchConfirmation(model: model))
         .background(WindowEditedMarker(isEdited: model.hasUnsavedChanges))
+        .background(MainWindowKeyTracker(model: model))
         // The three columns at their narrowest (220 + 260 + 380).
         .frame(minWidth: 860, minHeight: 520)
     }
@@ -124,6 +125,65 @@ struct ContentView: View {
                 description: Text("Refresh to discover Blueprints, or fetch a known Blueprint by ID.")
             )
         }
+    }
+}
+
+/// JTKit's "Turn on/off Demo Mode and discard unsaved changes?", confirmed
+/// through `AppModel.confirmDemoSwitch`, which refuses again while an
+/// operation runs.
+private struct DemoSwitchConfirmation: ViewModifier {
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        let target = model.demo.pendingSwitch ?? !model.demo.isOn
+        content.confirmationDialog(
+            "Turn \(target ? "on" : "off") \(DemoMode.title) and discard unsaved changes?",
+            isPresented: Binding(
+                get: { model.demo.pendingSwitch != nil },
+                set: { if !$0 { model.demo.cancelSwitch() } }
+            )
+        ) {
+            Button("Discard and Turn \(target ? "On" : "Off")", role: .destructive) { model.confirmDemoSwitch() }
+            Button("Cancel", role: .cancel) { model.demo.cancelSwitch() }
+        }
+    }
+}
+
+/// Keeps `AppModel.isMainWindowKey` up to date: the Blueprint menu acts only
+/// while the main window is in front.
+private struct MainWindowKeyTracker: NSViewRepresentable {
+    let model: AppModel
+
+    final class Coordinator {
+        var observers: [NSObjectProtocol] = []
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        let model = model
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            context.coordinator.observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak view] _ in
+                MainActor.assumeIsolated {
+                    model.isMainWindowKey = view?.window?.isKeyWindow == true
+                }
+            })
+        }
+        DispatchQueue.main.async { [weak view] in
+            model.isMainWindowKey = view?.window?.isKeyWindow == true
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+        coordinator.observers.forEach(NotificationCenter.default.removeObserver)
+        coordinator.observers = []
     }
 }
 

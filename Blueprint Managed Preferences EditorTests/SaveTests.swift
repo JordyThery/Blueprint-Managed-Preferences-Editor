@@ -219,7 +219,7 @@ final class SaveTests {
         profile.environmentID = "\"5f1e2d3c-4b5a-4968-8776-655443322110\""
         try app.profileStore.connections.save(profile)
         do {
-            _ = try app.currentClient()
+            _ = try app.currentClient(waits: app.discoveryWaits)
             Issue.record("Expected the Environment ID to be refused")
         } catch {
             #expect(error.localizedDescription.contains("isn’t a UUID"))

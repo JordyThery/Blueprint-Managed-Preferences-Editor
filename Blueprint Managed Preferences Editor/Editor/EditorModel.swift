@@ -103,6 +103,14 @@ final class EditorModel {
     /// Set by the menu bar; the window carries it out and clears it.
     var request: Request?
 
+    /// This editor's waits before a retry, with its own client: Stop in its
+    /// status line ends only its own wait.
+    let waits = RequestWaits()
+    /// The connection change count when this editor was made. Editors are
+    /// dropped on every change, so an operation that finds another count
+    /// after building its client would reach another tenant.
+    private let generation: Int
+
     /// The window's undo manager, set by the views.
     weak var undoManager: UndoManager?
     @ObservationIgnored private unowned let app: AppModel
@@ -111,6 +119,7 @@ final class EditorModel {
         blueprintID = detail.id
         document = BlueprintEditDocument(detail: detail)
         self.app = app
+        generation = app.connectionGeneration
     }
 
     var base: JamfPlatform.BlueprintDetail { document.base }
@@ -368,15 +377,15 @@ final class EditorModel {
         guard isDirty, !isReadOnly, !isBusy else { return }
         let snapshot = document
         let name = snapshot.base.overview.name
-        let generation = app.connectionGeneration
-        // Decided now: a connection or Demo Mode change can't move the backup.
-        let backupRoot = app.backupRoot
         begin(.saving)
         defer { operation = .idle }
         let service: JamfPlatform.Blueprints
         var sent = false
         do {
-            service = try app.currentService()
+            service = try currentService(for: .save)
+            // Decided now, for the connection in use: a later connection or
+            // Demo Mode change can't move the backup.
+            let backupRoot = app.backupRoot
 
             // 1. Optimistic concurrency.
             let latest = try await service.detail(id: blueprintID)
@@ -448,12 +457,11 @@ final class EditorModel {
     func deploy() async {
         guard canDeploy else { return }
         let name = base.overview.name
-        let generation = app.connectionGeneration
         begin(.deploying)
         defer { operation = .idle }
         let service: JamfPlatform.Blueprints
         do {
-            service = try app.currentService()
+            service = try currentService(for: .deploy)
         } catch {
             handle(error, action: .deploy, mayHaveReachedJamf: false, generation)
             return
@@ -532,9 +540,6 @@ final class EditorModel {
     func restore(from backup: BlueprintBackup) async {
         guard !isReadOnly, !isBusy else { return }
         let name = base.overview.name
-        let generation = app.connectionGeneration
-        // Decided now: a connection or Demo Mode change can't move the backup.
-        let backupRoot = app.backupRoot
         begin(.restoring)
         defer { operation = .idle }
         let service: JamfPlatform.Blueprints
@@ -544,7 +549,9 @@ final class EditorModel {
             guard let steps = backupDetail.steps, steps.arrayValue != nil else {
                 throw BackupStore.BackupError(message: "The backup has no steps array.")
             }
-            service = try app.currentService()
+            service = try currentService(for: .restore)
+            // Decided now, for the connection in use (see Save).
+            let backupRoot = app.backupRoot
             let latest = try await service.detail(id: blueprintID)
             if let change = Self.serverChange(from: base, to: latest, comparingScope: false) {
                 report(conflictAlert(latest: latest, change: change, outcome: "Nothing was changed."), generation)
@@ -571,17 +578,30 @@ final class EditorModel {
     /// `discardingEdits` (the user confirmed losing them).
     func reload(discardingEdits: Bool = false) async {
         guard !isBusy, !isDirty || discardingEdits else { return }
-        let generation = app.connectionGeneration
         begin(.reloading)
         defer { operation = .idle }
         do {
-            let fresh = try await app.currentService().detail(id: blueprintID)
+            let fresh = try await currentService(for: .reload).detail(id: blueprintID)
             guard app.connectionGeneration == generation else { return }
             app.store(fresh)
             reset(to: fresh)
         } catch {
             handle(error, action: .reload, mayHaveReachedJamf: false, generation)
         }
+    }
+
+    /// The connection changed (a change waiting to be applied, applied while
+    /// the client was built), so the client is for another tenant than this
+    /// editor's Blueprint.
+    private struct ConnectionChanged: Error {}
+
+    /// This editor's client, checked to be for the tenant the Blueprint was
+    /// loaded from: building it applies a waiting connection change.
+    /// - Throws: `ConnectionChanged` when that happened; nothing is sent then.
+    private func currentService(for action: Action) throws -> JamfPlatform.Blueprints {
+        let service = try app.currentService(waits: waits)
+        guard app.connectionGeneration == generation else { throw ConnectionChanged() }
+        return service
     }
 
     private func begin(_ operation: Operation) {
@@ -687,6 +707,16 @@ final class EditorModel {
         case restore = "Restore"
         case reload = "Reload"
 
+        /// "saved"
+        var pastParticiple: String {
+            switch self {
+            case .save: "saved"
+            case .deploy: "deployed"
+            case .restore: "restored"
+            case .reload: "reloaded"
+            }
+        }
+
         /// "nothing was saved"
         var nothingDone: String {
             switch self {
@@ -701,6 +731,12 @@ final class EditorModel {
     /// - Parameter mayHaveReachedJamf: the write request was being sent, so
     ///   a stopped wait doesn't tell whether Jamf has the change.
     private func handle(_ error: Error, action: Action, mayHaveReachedJamf: Bool, _ generation: Int) {
+        if error is ConnectionChanged {
+            report(Alert(kind: .info, title: "\(action.rawValue) Not Started",
+                         message: "The connection changed before “\(base.overview.name)” could be \(action.pastParticiple), so \(action.nothingDone) and nothing was read from the new connection."),
+                   generation)
+            return
+        }
         // Stop during a wait before a retry (RequestWaits): say what that left.
         if error is CancellationError {
             let message = mayHaveReachedJamf

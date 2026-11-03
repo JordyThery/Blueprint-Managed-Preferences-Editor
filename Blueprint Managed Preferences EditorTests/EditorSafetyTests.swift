@@ -152,9 +152,9 @@ final class EditorSafetyTests {
         let (app, editor) = try makeApp(server)
 
         let deploy = Task { await editor.deploy() }
-        await waitUntil { app.editorWaits.statusText != nil }
-        #expect(app.editorWaits.statusText?.contains("40 s") == true)
-        app.editorWaits.cancelAll()
+        await waitUntil { editor.waits.statusText != nil }
+        #expect(editor.waits.statusText?.contains("40 s") == true)
+        editor.waits.cancelAll()
         await deploy.value
 
         #expect(!methods(server).contains("POST"), "no deploy request")
@@ -178,8 +178,8 @@ final class EditorSafetyTests {
         try edit(editor)
 
         let save = Task { await editor.save(andDeploy: false) }
-        await waitUntil { app.editorWaits.statusText != nil }
-        app.editorWaits.cancelAll()
+        await waitUntil { editor.waits.statusText != nil }
+        editor.waits.cancelAll()
         await save.value
 
         #expect(methods(server) == ["GET", "PATCH"], "not sent again")
@@ -216,8 +216,8 @@ final class EditorSafetyTests {
         let (app, editor) = try makeApp(server)
 
         let deploy = Task { await editor.deploy() }
-        await waitUntil { app.editorWaits.statusText != nil }
-        app.editorWaits.cancelAll()
+        await waitUntil { editor.waits.statusText != nil }
+        editor.waits.cancelAll()
         await deploy.value
 
         #expect(methods(server) == ["GET", "POST"], "not sent again")
@@ -260,8 +260,8 @@ final class EditorSafetyTests {
         try edit(editor)
 
         let save = Task { await editor.save(andDeploy: false) }
-        await waitUntil { app.editorWaits.statusText != nil }
-        app.editorWaits.cancelAll()
+        await waitUntil { editor.waits.statusText != nil }
+        editor.waits.cancelAll()
         await save.value
 
         #expect(editor.resultTitle == "Saved, Not Reloaded")
@@ -284,8 +284,8 @@ final class EditorSafetyTests {
         let backup = try BackupStore.write(editor.base, root: backupRoot)
 
         let restore = Task { await editor.restore(from: BlueprintBackup(url: backup, blueprintID: Self.blueprintID, date: Date(), size: 0)) }
-        await waitUntil { app.editorWaits.statusText != nil }
-        app.editorWaits.cancelAll()
+        await waitUntil { editor.waits.statusText != nil }
+        editor.waits.cancelAll()
         await restore.value
 
         #expect(methods(server) == ["GET", "PATCH"])
@@ -443,7 +443,7 @@ final class EditorSafetyTests {
         try edit(editor)
 
         let save = Task { await editor.save(andDeploy: false) }
-        await waitUntil { app.editorWaits.statusText != nil }
+        await waitUntil { editor.waits.statusText != nil }
         #expect(!app.requestDemoSwitch(to: true), "refused while the save waits")
         #expect(!app.demo.isOn)
         app.demo.isOn = true
@@ -503,14 +503,109 @@ final class EditorSafetyTests {
         try edit(editor)
 
         let save = Task { await editor.save(andDeploy: false) }
-        await waitUntil { app.editorWaits.statusText != nil }
+        await waitUntil { editor.waits.statusText != nil }
         #expect(app.discoveryWaits.statusText == nil && app.settingsWaits.statusText == nil)
         app.settingsWaits.cancelAll()
         app.discoveryWaits.cancelAll()
-        #expect(app.editorWaits.statusText != nil, "the save still waits")
-        app.editorWaits.cancelAll()
+        #expect(editor.waits.statusText != nil, "the save still waits")
+        editor.waits.cancelAll()
         await save.value
         #expect(editor.status?.title == "Save Stopped")
+    }
+
+    /// Each editor has its own waits: Stop in one editor ends only its wait.
+    @Test func stopInOneEditorEndsOnlyItsOwnWait() async throws {
+        let rosettaPath = "/blueprints/v1/blueprints/0a1b2c3d-3333-4333-8333-0123456789ab"
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): Self.token
+            case ("GET", Self.blueprintPath), ("GET", rosettaPath): .json(503, "{}", headers: ["Retry-After": "40"])
+            default: .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        app.store(try JamfPlatform.BlueprintDetail(data: Data(rosettaBlueprintJSON.utf8)))
+        let other = try #require(app.editors["0a1b2c3d-3333-4333-8333-0123456789ab"])
+
+        let first = Task { await editor.reload() }
+        let second = Task { await other.reload() }
+        await waitUntil { editor.waits.statusText != nil && other.waits.statusText != nil }
+        editor.waits.cancelAll()
+        await first.value
+        #expect(editor.status?.title == "Reload Stopped")
+        #expect(other.waits.statusText != nil, "the other editor still waits")
+        #expect(other.isBusy)
+        other.waits.cancelAll()
+        await second.value
+        #expect(other.status?.title == "Reload Stopped")
+    }
+
+    /// A connection change waiting to be applied (edited in Settings, not
+    /// yet noticed) is applied when the client is built: Save, Restore and
+    /// Deploy then stop with a sentence, and nothing is read from or sent to
+    /// the other tenant.
+    @Test(arguments: ["save", "restore", "deploy"])
+    func aConnectionChangeAppliedWhileBuildingTheClientSendsNothing(operation: String) async throws {
+        let (app, editor) = try makeApp(Self.silentServer())
+        let backup = try BackupStore.write(editor.base, root: backupRoot)
+        if operation == "save" { try edit(editor) }
+        var edited = profile
+        edited.environmentID = "5f1e2d3c-4b5a-4968-8776-655443322112"
+        // Saved without the model's observer running yet: the change is waiting.
+        try app.profileStore.connections.save(edited)
+
+        switch operation {
+        case "save": await editor.save(andDeploy: false)
+        case "restore": await editor.restore(from: BlueprintBackup(url: backup, blueprintID: Self.blueprintID, date: Date(), size: 0))
+        default: await editor.deploy()
+        }
+
+        #expect(app.notice?.title.hasSuffix("Not Started") == true, "\(app.notice?.title ?? "no notice")")
+        #expect(app.notice?.message.contains("The connection changed before") == true)
+        #expect(app.notice?.message.contains("nothing was read from the new connection") == true)
+        #expect(BackupStore.backups(for: Self.blueprintID, root: backupRoot).count == 1, "no new backup")
+    }
+
+    /// The Blueprint menu acts only while the main window is in front, so
+    /// ⌘S in Settings stays Settings' own Save.
+    @Test func theBlueprintMenuActsOnlyWithTheMainWindowInFront() throws {
+        let (app, editor) = try makeApp(Self.silentServer())
+        app.selectedBlueprintID = Self.blueprintID
+        app.isMainWindowKey = false
+        #expect(app.commandEditor == nil)
+        app.isMainWindowKey = true
+        #expect(app.commandEditor === editor)
+    }
+
+    /// Confirming the Demo Mode question is refused when a save started
+    /// while the question was open.
+    @Test func confirmingDemoModeIsRefusedWhenASaveStartedMeanwhile() async throws {
+        let script = ServerScript()
+        let server = MockServer { request in
+            switch (request.method, request.path) {
+            case ("POST", "/auth/token"): return Self.token
+            case ("GET", Self.blueprintPath): return .json(200, emailBlueprintJSON)
+            case ("PATCH", Self.blueprintPath):
+                _ = script.patchGate.wait(timeout: .now() + 10)
+                return Self.noContent
+            default: return .json(500, "{}")
+            }
+        }
+        let (app, editor) = try makeApp(server)
+        try edit(editor)
+        #expect(app.requestDemoSwitch(to: true), "unsaved edits: the question opens")
+        #expect(app.demo.pendingSwitch == true)
+
+        let save = Task { await editor.save(andDeploy: false) }
+        await waitUntil { server.requests.contains { $0.method == "PATCH" } }
+        app.confirmDemoSwitch()
+
+        #expect(!app.demo.isOn, "not switched under the running save")
+        #expect(app.demo.pendingSwitch == nil)
+        #expect(app.notice?.title == "Wait for the Save to Finish")
+        script.patchGate.signal()
+        await save.value
+        #expect(editor.status?.title == "Saved")
     }
 
     // MARK: What Save, Restore and Deploy compare (review finding 2)
@@ -669,7 +764,7 @@ final class EditorSafetyTests {
         app.store(try JamfPlatform.BlueprintDetail(data: Data(emailBlueprintJSON.utf8)))
         edited.name = "Renamed"
         try app.profileStore.connections.save(edited)
-        _ = try app.currentClient()
+        _ = try app.currentClient(waits: app.discoveryWaits)
         #expect(app.editors.count == 1)
     }
 

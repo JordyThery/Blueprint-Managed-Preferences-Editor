@@ -218,7 +218,7 @@ private struct EditorColumn: View {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text(editor.operation.label).font(.caption)
-                RetryWaitStatus(waits: model.editorWaits)
+                RetryWaitStatus(waits: editor.waits)
             }
         } else if let status = editor.status {
             // The last result, in the window rather than an alert.

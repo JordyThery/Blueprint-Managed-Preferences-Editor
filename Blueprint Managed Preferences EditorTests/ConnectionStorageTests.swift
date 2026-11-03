@@ -109,7 +109,7 @@ final class ConnectionStorageTests {
     @Test func aKeychainThatCantBeReadIsReportedAsSuch() throws {
         try saveTheOldWay(oldProfiles)
         let app = AppModel(profileStore: ProfileStore(defaults: defaults, secrets: LockedKeychain()))
-        #expect(throws: SecretStoreError.self) { try app.currentClient() }
+        #expect(throws: SecretStoreError.self) { try app.currentClient(waits: app.discoveryWaits) }
         #expect(throws: SecretStoreError.self) { try app.profileStore.credentials(for: oldProfiles[0]) }
     }
 

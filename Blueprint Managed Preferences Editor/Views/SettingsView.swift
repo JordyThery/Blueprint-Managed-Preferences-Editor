@@ -54,7 +54,7 @@ extension AppModel {
     /// that can't be read is reported as such.
     func testConnection(_ profile: ConnectionProfile, typedSecret: String?) async throws -> String {
         let secret = try typedSecret ?? profileStore.secret(for: profile) ?? ""
-        let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret), purpose: .settings)
+        let client = try makeClient(credentials: PlatformCredentials(profile: profile, secret: secret), waits: settingsWaits)
         return try await client.testConnection(checks: Self.readChecks) {
             let page = try await JamfPlatform.Blueprints(client: client).listPage(page: 0, pageSize: 1)
             return page.totalCount.map { counted($0, "Blueprint") } ?? "Blueprints readable"

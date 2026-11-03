@@ -166,7 +166,7 @@ final class DemoModeTests {
         let readsBefore = secrets.readCount
         let writesBefore = secrets.writeCount
 
-        let blueprints = try await app.currentService().list()
+        let blueprints = try await app.currentService(waits: app.discoveryWaits).list()
         #expect(blueprints.count == 9, "JTKit's six Contoso Blueprints and the app's three")
         for id in [DemoBlueprints.microsoft365ID, DemoBlueprints.chromeID, DemoBlueprints.helpdeskID] {
             try await app.fetchBlueprint(id: id)
@@ -236,7 +236,7 @@ final class DemoModeTests {
     @Test func outsideDemoModeTheRealConnectionAndFolderAreUsed() throws {
         let app = try makeApp(demoOn: false)
         #expect(app.backupRoot == realBackupRoot)
-        _ = try app.currentClient()
+        _ = try app.currentClient(waits: app.discoveryWaits)
         #expect(secrets.readCount > 0)
         #expect(app.demo.jamfPlatformServer.requestCount == 0)
     }
