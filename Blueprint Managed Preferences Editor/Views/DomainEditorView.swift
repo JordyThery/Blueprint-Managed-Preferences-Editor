@@ -334,7 +334,7 @@ private struct PastePlistSheet: View {
                 .frame(minHeight: 260)
                 .border(.separator)
             if let error {
-                Text(error).font(.caption).foregroundStyle(.red)
+                ValidationMessage(error)
             }
             HStack {
                 Spacer()

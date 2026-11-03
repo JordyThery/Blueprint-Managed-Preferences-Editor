@@ -16,7 +16,7 @@ final class WebsiteScreenshotUITests: JTKitUITestCase {
     override var appName: String { "Blueprint Managed Preferences Editor" }
 
     override var demoLaunchArguments: [String] {
-        ["-checksForUpdates", "NO", "-AppleInterfaceStyle", "Light"]
+        ["-checksForUpdates", "NO", "-NSRequiresAquaSystemAppearance", "YES"]
     }
 
     override func launchApp() {

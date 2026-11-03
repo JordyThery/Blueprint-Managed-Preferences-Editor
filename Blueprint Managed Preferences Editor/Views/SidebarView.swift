@@ -113,12 +113,14 @@ struct BlueprintRow: View {
                         .font(.system(size: 7))
                         .foregroundStyle(.tint)
                         .help("Unsaved changes")
+                        .accessibilityLabel("Unsaved changes")
                 }
                 if isReadOnly {
                     Image(systemName: "lock.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .help("Read-only (assigned to a division)")
+                        .accessibilityLabel("Read-only, assigned to a division")
                 }
                 Text(overview.name)
                     .font(.body.weight(.medium))

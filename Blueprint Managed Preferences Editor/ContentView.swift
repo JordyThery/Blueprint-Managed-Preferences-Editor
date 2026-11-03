@@ -221,11 +221,16 @@ private struct FetchByIDSheet: View {
                 .font(.body.monospaced())
                 .onSubmit(fetch)
             if let errorMessage {
-                Text(errorMessage)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                Label {
+                    Text(errorMessage)
+                } icon: {
+                    Image(systemName: "xmark.octagon.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityHidden(true)
+                }
+                .font(.callout)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 if isFetching {

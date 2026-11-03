@@ -161,9 +161,12 @@ private struct EditorColumn: View {
     @ViewBuilder
     private var statusBanner: some View {
         if editor.isReadOnly {
-            Label(JamfPlatform.APIError.divisionLocked, systemImage: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.orange)
+            Label {
+                Text(JamfPlatform.APIError.divisionLocked)
+            } icon: {
+                Image(systemName: "lock.fill").foregroundStyle(.orange)
+            }
+            .font(.caption)
         } else if editor.isBusy {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
@@ -171,9 +174,12 @@ private struct EditorColumn: View {
                 RetryWaitStatus()
             }
         } else if editor.isDirty {
-            Label("Unsaved changes · save before deploying", systemImage: "pencil.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.tint)
+            Label {
+                Text("Unsaved changes · save before deploying")
+            } icon: {
+                Image(systemName: "pencil.circle.fill").foregroundStyle(.tint)
+            }
+            .font(.caption)
         }
     }
 
@@ -343,6 +349,29 @@ private struct DomainRow: View {
     }
 }
 
+/// Why typed text can't be used: primary text beside the system's error
+/// symbol, readable at caption size (red caption text isn't), and read by
+/// VoiceOver as an error.
+struct ValidationMessage: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: "xmark.octagon.fill")
+                .foregroundStyle(.red)
+                .accessibilityHidden(true)
+        }
+        .font(.caption)
+        .accessibilityLabel("Error: \(text)")
+    }
+}
+
 /// A small sheet asking for a name, with validation.
 struct NameSheet: View {
     let title: String
@@ -363,7 +392,7 @@ struct NameSheet: View {
                 .font(.body.monospaced())
                 .onSubmit(submit)
             if let error, !name.isEmpty {
-                Text(error).font(.caption).foregroundStyle(.red)
+                ValidationMessage(error)
             }
             HStack {
                 Spacer()

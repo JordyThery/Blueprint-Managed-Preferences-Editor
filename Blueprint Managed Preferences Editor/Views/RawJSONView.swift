@@ -121,7 +121,7 @@ struct BlueprintHeader: View {
             }
             Text(detail.id)
                 .font(.caption2.monospaced())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
