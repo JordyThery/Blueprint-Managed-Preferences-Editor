@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0
+## 1.2.0 (2026-11-03)
 
 - When Jamf asks the app to wait before trying a request again, the wait is now shown while Blueprints are read, saved, deployed or restored, and during **Test Connection** and **Load Environments** in Settings, with **Stop** to end it. Each **Stop** ends only the waits shown beside it. A wait lasts at most 60 seconds (it could be two minutes). After Stop, the message says whether anything reached Jamf.
 - **Deploy…** now also stops when someone changed the Blueprint’s steps or scope on the server since you loaded it, so a deployment never goes to a scope you didn’t confirm. **Save** and **Restore**, which send only the steps, stop when the steps or the last-updated time changed, and no longer stop for a change of scope alone. The message says what changed.
