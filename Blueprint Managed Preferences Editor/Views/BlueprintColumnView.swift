@@ -234,7 +234,6 @@ private struct EditorColumn: View {
                     }
                 }
                 .font(.caption)
-                .accessibilityLabel("\(status.title): \(status.message)")
                 Spacer(minLength: 0)
                 Button {
                     editor.status = nil
