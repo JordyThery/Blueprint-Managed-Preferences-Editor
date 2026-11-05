@@ -47,6 +47,10 @@ The Jamf Platform API applies Blueprint updates as a JSON merge-patch, and a mer
 - **Division-locked Blueprints are left alone.** `divisionId` is never sent. Blueprints that Jamf reports as assigned to a division are marked read-only, as are Blueprints whose changes Jamf refuses for that reason.
 - **Deployment needs confirmation.** After a save the Blueprint shows *Out of Date* until you deploy it, and deploying asks for confirmation, showing the Blueprint name and its scope. **Deploy…** is unavailable while edits are unsaved (**Save & Deploy…** in the review does both) and on division-locked Blueprints.
 
+## Compared with Blueshift
+
+[Blueshift](https://github.com/Jamf-Concepts/blueshift), a Jamf Concepts project for moving classic configuration profiles to Blueprints, can also edit the Managed Preferences values that the Jamf Pro Blueprint editor can’t open, on any Blueprint, as a form or a plist. Blueprint Managed Preferences Editor is built only for that: a typed outline editor, Forced, Set-Once and Often per domain, undo and redo, a backup before every save, and a check for changes made in Jamf in the meantime.
+
 ## Requirements
 
 - macOS 15 or later
