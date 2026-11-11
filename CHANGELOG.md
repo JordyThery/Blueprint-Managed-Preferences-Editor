@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 (2026-11-11)
+
+The last release of Blueprint Managed Preferences Editor: the app is no longer maintained. Use Blueshift by Jamf Concepts instead: its Edit Values edits the Managed Preferences values Jamf Pro’s Blueprint editor can’t open, on any Blueprint. Blueshift never deploys: deploying is done in Jamf Pro.
+
+- A notice that the app is no longer maintained, as a bar at the top of the main window and in About, with **Open Blueshift** to open Blueshift on GitHub in your browser. Closing the bar hides it until the next launch.
+- Deleting a connection whose Keychain item can’t be removed now keeps the connection and says why, for example while the Keychain is locked, instead of removing the connection and leaving its client secret behind in the Keychain. Delete it again once the Keychain allows it.
+
 ## 1.2.0 (2026-11-03)
 
 - When Jamf asks the app to wait before trying a request again, the wait is now shown while Blueprints are read, saved, deployed or restored, and during **Test Connection** and **Load Environments** in Settings, with **Stop** to end it. Each **Stop** ends only the waits shown beside it. A wait lasts at most 60 seconds (it could be two minutes). After Stop, the message says whether anything reached Jamf.

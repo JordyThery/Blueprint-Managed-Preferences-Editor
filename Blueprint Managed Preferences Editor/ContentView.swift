@@ -9,9 +9,17 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        @Bindable var model = model
+        VStack(spacing: 0) {
+            ArchiveNoticeBar(isClosed: $model.isArchiveNoticeClosed)
+            splitView
+        }
+    }
+
+    private var splitView: some View {
         @Bindable var updates = updates
         @Bindable var model = model
-        NavigationSplitView {
+        return NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 300)
         } content: {
