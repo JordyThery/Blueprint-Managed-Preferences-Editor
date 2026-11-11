@@ -78,6 +78,8 @@ final class AppModel {
     /// after the connection changed, or edits discarded by a change nobody
     /// was asked about.
     var notice: EditorModel.Alert?
+    /// The no-longer-maintained notice was closed. Not saved: it's back at the next launch.
+    var isArchiveNoticeClosed = false
     /// The Fetch by ID sheet, from the toolbar or the View menu.
     var isShowingFetchByID = false
 

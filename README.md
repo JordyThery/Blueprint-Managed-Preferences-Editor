@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **Archived.** Blueprint Managed Preferences Editor is no longer maintained. Use Blueshift by Jamf Concepts instead: its Edit Values edits the Managed Preferences values Jamf Pro’s Blueprint editor can’t open, on any Blueprint, as Blueprint Managed Preferences Editor does. Blueshift never deploys: deploying is done in Jamf Pro.
+>
+> [Open Blueshift](https://github.com/Jamf-Concepts/blueshift)
+
 <p align="center">
   <img src="docs/icon.png" width="128" alt="Blueprint Managed Preferences Editor app icon">
 </p>
